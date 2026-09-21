@@ -31,8 +31,9 @@ export function reportCatalog(matterId: string): ReportCatalogEntry[] {
     {
       type: "witness_contradiction_report",
       title: "Witness Contradiction Report",
-      description: "All logged contradictions with adversarial review notes.",
-      available: false,
+      description: "Every witness's statements, materially different descriptions identified, and cited evidence for each side.",
+      href: `${base}/witness-contradiction-report`,
+      available: true,
     },
     {
       type: "evidence_source_index",
