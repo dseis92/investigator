@@ -30,7 +30,7 @@ export default async function QuestionsPage({ params }: { params: Promise<{ matt
       .order("created_at", { ascending: true }),
     supabase
       .from("evidence_links")
-      .select("id, proposition_id, relationship, evidence:evidence(id, evidence_number, title)")
+      .select("id, proposition_id, relationship, evidence:evidence!evidence_links_evidence_matter_fkey(id, evidence_number, title)")
       .eq("matter_id", matterId)
       .not("proposition_id", "is", null),
     supabase

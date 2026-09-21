@@ -36,7 +36,7 @@ export default async function SubjectDetailPage({
   const [{ data: attributes }, { data: evidence }] = await Promise.all([
     supabase
       .from("entity_attributes")
-      .select("*, evidence:evidence(id, evidence_number, title)")
+      .select("*, evidence:evidence!entity_attributes_evidence_matter_fkey(id, evidence_number, title)")
       .eq("subject_id", subjectId)
       .order("created_at", { ascending: false }),
     supabase

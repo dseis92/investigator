@@ -34,7 +34,7 @@ export default async function TimelinePage({
     query,
     supabase
       .from("evidence_links")
-      .select("event_id, evidence:evidence(id, evidence_number, title)")
+      .select("event_id, evidence:evidence!evidence_links_evidence_matter_fkey(id, evidence_number, title)")
       .eq("matter_id", matterId)
       .not("event_id", "is", null),
     supabase

@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.17"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -104,11 +104,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "analyses_proposition_matter_fkey"
+            columns: ["matter_id", "proposition_id"]
+            isOneToOne: false
+            referencedRelation: "propositions"
+            referencedColumns: ["matter_id", "id"]
+          },
+          {
             foreignKeyName: "analyses_question_id_fkey"
             columns: ["question_id"]
             isOneToOne: false
             referencedRelation: "questions"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "analyses_question_matter_fkey"
+            columns: ["matter_id", "question_id"]
+            isOneToOne: false
+            referencedRelation: "questions"
+            referencedColumns: ["matter_id", "id"]
           },
         ]
       }
@@ -146,11 +160,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "analysis_conclusion_evidence_conclusion_matter_fkey"
+            columns: ["matter_id", "conclusion_id"]
+            isOneToOne: false
+            referencedRelation: "analysis_conclusions"
+            referencedColumns: ["matter_id", "id"]
+          },
+          {
             foreignKeyName: "analysis_conclusion_evidence_evidence_id_fkey"
             columns: ["evidence_id"]
             isOneToOne: false
             referencedRelation: "evidence"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "analysis_conclusion_evidence_evidence_matter_fkey"
+            columns: ["matter_id", "evidence_id"]
+            isOneToOne: false
+            referencedRelation: "evidence"
+            referencedColumns: ["matter_id", "id"]
           },
           {
             foreignKeyName: "analysis_conclusion_evidence_matter_id_fkey"
@@ -199,6 +227,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "analyses"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "analysis_conclusions_analysis_matter_fkey"
+            columns: ["matter_id", "analysis_id"]
+            isOneToOne: false
+            referencedRelation: "analyses"
+            referencedColumns: ["matter_id", "id"]
           },
           {
             foreignKeyName: "analysis_conclusions_created_by_fkey"
@@ -307,6 +342,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "contradiction_evidence_contradiction_matter_fkey"
+            columns: ["matter_id", "contradiction_id"]
+            isOneToOne: false
+            referencedRelation: "contradictions"
+            referencedColumns: ["matter_id", "id"]
+          },
+          {
             foreignKeyName: "contradiction_evidence_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
@@ -319,6 +361,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "evidence"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contradiction_evidence_evidence_matter_fkey"
+            columns: ["matter_id", "evidence_id"]
+            isOneToOne: false
+            referencedRelation: "evidence"
+            referencedColumns: ["matter_id", "id"]
           },
           {
             foreignKeyName: "contradiction_evidence_matter_id_fkey"
@@ -382,6 +431,13 @@ export type Database = {
             isOneToOne: true
             referencedRelation: "contradictions"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contradiction_reviews_contradiction_matter_fkey"
+            columns: ["matter_id", "contradiction_id"]
+            isOneToOne: false
+            referencedRelation: "contradictions"
+            referencedColumns: ["matter_id", "id"]
           },
           {
             foreignKeyName: "contradiction_reviews_matter_id_fkey"
@@ -489,11 +545,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "contradictions_proposition_a_matter_fkey"
+            columns: ["matter_id", "proposition_a_id"]
+            isOneToOne: false
+            referencedRelation: "propositions"
+            referencedColumns: ["matter_id", "id"]
+          },
+          {
             foreignKeyName: "contradictions_proposition_b_id_fkey"
             columns: ["proposition_b_id"]
             isOneToOne: false
             referencedRelation: "propositions"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contradictions_proposition_b_matter_fkey"
+            columns: ["matter_id", "proposition_b_id"]
+            isOneToOne: false
+            referencedRelation: "propositions"
+            referencedColumns: ["matter_id", "id"]
           },
           {
             foreignKeyName: "contradictions_statement_a_id_fkey"
@@ -503,11 +573,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "contradictions_statement_a_matter_fkey"
+            columns: ["matter_id", "statement_a_id"]
+            isOneToOne: false
+            referencedRelation: "statements"
+            referencedColumns: ["matter_id", "id"]
+          },
+          {
             foreignKeyName: "contradictions_statement_b_id_fkey"
             columns: ["statement_b_id"]
             isOneToOne: false
             referencedRelation: "statements"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contradictions_statement_b_matter_fkey"
+            columns: ["matter_id", "statement_b_id"]
+            isOneToOne: false
+            referencedRelation: "statements"
+            referencedColumns: ["matter_id", "id"]
           },
         ]
       }
@@ -570,6 +654,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "entity_attributes_evidence_matter_fkey"
+            columns: ["matter_id", "evidence_id"]
+            isOneToOne: false
+            referencedRelation: "evidence"
+            referencedColumns: ["matter_id", "id"]
+          },
+          {
             foreignKeyName: "entity_attributes_matter_id_fkey"
             columns: ["matter_id"]
             isOneToOne: false
@@ -584,11 +675,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "entity_attributes_subject_matter_fkey"
+            columns: ["matter_id", "subject_id"]
+            isOneToOne: false
+            referencedRelation: "subjects"
+            referencedColumns: ["matter_id", "id"]
+          },
+          {
             foreignKeyName: "entity_attributes_superseded_by_fkey"
             columns: ["superseded_by"]
             isOneToOne: false
             referencedRelation: "entity_attributes"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_attributes_superseded_by_matter_fkey"
+            columns: ["matter_id", "superseded_by"]
+            isOneToOne: false
+            referencedRelation: "entity_attributes"
+            referencedColumns: ["matter_id", "id"]
           },
         ]
       }
@@ -659,6 +764,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "evidence"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "events_primary_evidence_matter_fkey"
+            columns: ["matter_id", "primary_evidence_id"]
+            isOneToOne: false
+            referencedRelation: "evidence"
+            referencedColumns: ["matter_id", "id"]
           },
         ]
       }
@@ -767,11 +879,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "evidence_source_matter_fkey"
+            columns: ["matter_id", "source_id"]
+            isOneToOne: false
+            referencedRelation: "sources"
+            referencedColumns: ["matter_id", "id"]
+          },
+          {
             foreignKeyName: "evidence_superseded_by_fkey"
             columns: ["superseded_by"]
             isOneToOne: false
             referencedRelation: "evidence"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "evidence_superseded_by_matter_fkey"
+            columns: ["matter_id", "superseded_by"]
+            isOneToOne: false
+            referencedRelation: "evidence"
+            referencedColumns: ["matter_id", "id"]
           },
         ]
       }
@@ -817,6 +943,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "evidence"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "evidence_annotations_evidence_matter_fkey"
+            columns: ["matter_id", "evidence_id"]
+            isOneToOne: false
+            referencedRelation: "evidence"
+            referencedColumns: ["matter_id", "id"]
           },
           {
             foreignKeyName: "evidence_annotations_matter_id_fkey"
@@ -883,11 +1016,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "evidence_links_event_matter_fkey"
+            columns: ["matter_id", "event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["matter_id", "id"]
+          },
+          {
             foreignKeyName: "evidence_links_evidence_id_fkey"
             columns: ["evidence_id"]
             isOneToOne: false
             referencedRelation: "evidence"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "evidence_links_evidence_matter_fkey"
+            columns: ["matter_id", "evidence_id"]
+            isOneToOne: false
+            referencedRelation: "evidence"
+            referencedColumns: ["matter_id", "id"]
           },
           {
             foreignKeyName: "evidence_links_matter_id_fkey"
@@ -904,6 +1051,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "evidence_links_proposition_matter_fkey"
+            columns: ["matter_id", "proposition_id"]
+            isOneToOne: false
+            referencedRelation: "propositions"
+            referencedColumns: ["matter_id", "id"]
+          },
+          {
             foreignKeyName: "evidence_links_statement_id_fkey"
             columns: ["statement_id"]
             isOneToOne: false
@@ -911,11 +1065,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "evidence_links_statement_matter_fkey"
+            columns: ["matter_id", "statement_id"]
+            isOneToOne: false
+            referencedRelation: "statements"
+            referencedColumns: ["matter_id", "id"]
+          },
+          {
             foreignKeyName: "evidence_links_subject_id_fkey"
             columns: ["subject_id"]
             isOneToOne: false
             referencedRelation: "subjects"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "evidence_links_subject_matter_fkey"
+            columns: ["matter_id", "subject_id"]
+            isOneToOne: false
+            referencedRelation: "subjects"
+            referencedColumns: ["matter_id", "id"]
           },
         ]
       }
@@ -986,11 +1154,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "leads_question_matter_fkey"
+            columns: ["matter_id", "question_id"]
+            isOneToOne: false
+            referencedRelation: "questions"
+            referencedColumns: ["matter_id", "id"]
+          },
+          {
             foreignKeyName: "leads_subject_id_fkey"
             columns: ["subject_id"]
             isOneToOne: false
             referencedRelation: "subjects"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_subject_matter_fkey"
+            columns: ["matter_id", "subject_id"]
+            isOneToOne: false
+            referencedRelation: "subjects"
+            referencedColumns: ["matter_id", "id"]
           },
         ]
       }
@@ -1171,6 +1353,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "questions"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "propositions_question_matter_fkey"
+            columns: ["matter_id", "question_id"]
+            isOneToOne: false
+            referencedRelation: "questions"
+            referencedColumns: ["matter_id", "id"]
           },
         ]
       }
@@ -1438,6 +1627,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "statements_evidence_matter_fkey"
+            columns: ["matter_id", "evidence_id"]
+            isOneToOne: false
+            referencedRelation: "evidence"
+            referencedColumns: ["matter_id", "id"]
+          },
+          {
             foreignKeyName: "statements_matter_id_fkey"
             columns: ["matter_id"]
             isOneToOne: false
@@ -1450,6 +1646,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "subjects"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "statements_subject_matter_fkey"
+            columns: ["matter_id", "subject_id"]
+            isOneToOne: false
+            referencedRelation: "subjects"
+            referencedColumns: ["matter_id", "id"]
           },
         ]
       }
@@ -1512,7 +1715,6 @@ export type Database = {
           p_jurisdiction?: string
           p_matter_number: string
           p_name: string
-          p_role?: string
           p_venue?: string
         }
         Returns: {
@@ -1543,6 +1745,64 @@ export type Database = {
         Returns: boolean
       }
       is_matter_member: { Args: { p_matter_id: string }; Returns: boolean }
+      log_audit_event: {
+        Args: {
+          p_action: string
+          p_entity_id: string
+          p_entity_type: string
+          p_matter_id: string
+          p_new_value?: Json
+          p_previous_value?: Json
+          p_summary: string
+        }
+        Returns: {
+          action: string
+          actor_id: string | null
+          created_at: string
+          entity_id: string
+          entity_type: string
+          id: string
+          matter_id: string
+          new_value: Json | null
+          previous_value: Json | null
+          summary: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "audit_events"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      log_review_decision: {
+        Args: {
+          p_decision: string
+          p_entity_id: string
+          p_entity_type: string
+          p_matter_id: string
+          p_notes?: string
+        }
+        Returns: {
+          created_at: string
+          decision: string
+          entity_id: string
+          entity_type: string
+          id: string
+          matter_id: string
+          notes: string | null
+          reviewer_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "review_decisions"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      resolve_entity_matter_id: {
+        Args: { p_entity_id: string; p_entity_type: string }
+        Returns: string
+      }
     }
     Enums: {
       [_ in never]: never

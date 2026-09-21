@@ -31,7 +31,7 @@ export default async function PropositionEvidenceMatrixPage({
     supabase
       .from("evidence_links")
       .select(
-        "proposition_id, relationship, evidence:evidence(evidence_number, title, source_locator, event_date, provenance_status)"
+        "proposition_id, relationship, evidence:evidence!evidence_links_evidence_matter_fkey(evidence_number, title, source_locator, event_date, provenance_status)"
       )
       .eq("matter_id", matterId)
       .not("proposition_id", "is", null),

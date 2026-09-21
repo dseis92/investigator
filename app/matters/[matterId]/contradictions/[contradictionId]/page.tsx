@@ -42,7 +42,7 @@ export default async function ContradictionDetailPage({
   const [{ data: citedEvidence }, { data: review }, { data: evidence }] = await Promise.all([
     supabase
       .from("contradiction_evidence")
-      .select("side, evidence:evidence(id, evidence_number, title)")
+      .select("side, evidence:evidence!contradiction_evidence_evidence_matter_fkey(id, evidence_number, title)")
       .eq("contradiction_id", contradictionId),
     supabase.from("contradiction_reviews").select("*").eq("contradiction_id", contradictionId).maybeSingle(),
     supabase

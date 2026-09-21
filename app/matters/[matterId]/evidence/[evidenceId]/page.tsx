@@ -47,7 +47,7 @@ export default async function EvidenceDetailPage({
 
   const { data: evidence } = await supabase
     .from("evidence")
-    .select("*, source:sources(name, source_type, locator)")
+    .select("*, source:sources!evidence_source_matter_fkey(name, source_type, locator)")
     .eq("id", evidenceId)
     .eq("matter_id", matterId)
     .maybeSingle()
@@ -70,7 +70,7 @@ export default async function EvidenceDetailPage({
     supabase
       .from("evidence_links")
       .select(
-        "id, relationship, subject:subjects(id, display_name), event:events(id, title), proposition:propositions(id, statement), statement:statements(id, content)"
+        "id, relationship, subject:subjects!evidence_links_subject_matter_fkey(id, display_name), event:events!evidence_links_event_matter_fkey(id, title), proposition:propositions!evidence_links_proposition_matter_fkey(id, statement), statement:statements!evidence_links_statement_matter_fkey(id, content)"
       )
       .eq("evidence_id", evidenceId),
     supabase
