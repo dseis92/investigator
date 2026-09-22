@@ -6,6 +6,34 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
+type MatterPilotTable<Row, Insert, Update> = {
+  Row: Row
+  Insert: Insert
+  Update: Update
+  Relationships: []
+}
+
+type AppointmentTypeRow = { id: string; matter_id: string; name: string; duration_minutes: number; category: string; required_checklist: Json; required_documents: Json; created_by: string; created_at: string }
+type AppointmentRow = { id: string; matter_id: string; appointment_type_id: string | null; workflow_key: string; title: string; starts_at: string; ends_at: string; status: string; conflict_status: string; location: string | null; notes: string | null; client_name: string | null; client_email: string | null; created_by: string; created_at: string; updated_at: string }
+type AppointmentParticipantRow = { id: string; matter_id: string; appointment_id: string; display_name: string; email: string | null; participant_role: string; response_status: string; is_required: boolean; created_at: string }
+type AppointmentTaskRow = { id: string; matter_id: string; appointment_id: string; label: string; status: string; is_blocking: boolean; due_at: string | null; assigned_to: string | null; created_by: string; created_at: string; updated_at: string }
+type AppointmentDocumentRow = { id: string; matter_id: string; appointment_id: string; name: string; status: string; is_required: boolean; requested_at: string; received_at: string | null; created_by: string; created_at: string }
+type AppointmentDocumentDraftRow = { id: string; matter_id: string; appointment_document_id: string; template_key: string; content: string; status: string; created_by: string; updated_by: string; created_at: string; updated_at: string }
+type AppointmentIntakeRow = { id: string; matter_id: string; appointment_id: string; full_name: string; email: string; phone: string | null; summary: string | null; goals: string | null; deadlines: string | null; engagement_acknowledged_at: string | null; client_completed_at: string | null; created_at: string; updated_at: string }
+type AppointmentReminderRow = { id: string; matter_id: string; appointment_id: string; channel: string; send_at: string; status: string; created_at: string }
+type AppointmentPacketRow = { id: string; matter_id: string; appointment_id: string; token: string; status: string; expires_at: string; viewed_at: string | null; completed_at: string | null; created_by: string; created_at: string; updated_at: string }
+type AppointmentPacketReminderRow = { id: string; matter_id: string; packet_id: string; kind: string; send_at: string; status: string; created_at: string; updated_at: string }
+type AppointmentCommunicationRow = { id: string; matter_id: string; appointment_id: string; channel: string; direction: string; status: string; recipient: string | null; subject: string | null; body: string; provider: string | null; provider_message_id: string | null; error_message: string | null; sent_at: string | null; created_by: string; created_at: string; updated_at: string }
+type MatterDeadlineRow = { id: string; matter_id: string; title: string; kind: string; due_at: string; priority: string; status: string; notes: string | null; assigned_to: string | null; created_by: string; created_at: string; updated_at: string }
+type MatterContactRow = { id: string; matter_id: string; display_name: string; contact_type: string; email: string | null; phone: string | null; notes: string | null; status: string; created_by: string; created_at: string; updated_at: string }
+type BookingPageRow = { id: string; matter_id: string; slug: string; firm_name: string; active: boolean; created_by: string; created_at: string }
+type BookingRequestRow = { id: string; matter_id: string; booking_page_id: string; appointment_type_name: string; requested_start: string; full_name: string; email: string; summary: string | null; status: string; created_at: string; reviewed_at: string | null }
+type CalendarNoteRow = { id: string; matter_id: string | null; title: string; note: string; starts_at: string; ends_at: string; created_by: string; created_at: string; updated_at: string }
+type IntakeReviewRow = { id: string; matter_id: string; booking_request_id: string; reviewer_id: string; decision: string; conflict_status: string; reviewer_note: string | null; created_at: string; updated_at: string }
+
+type MatterPilotInsert<T> = Partial<T>
+type MatterPilotUpdate<T> = Partial<T>
+
 export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
@@ -14,6 +42,23 @@ export type Database = {
   }
   public: {
     Tables: {
+      appointment_types: MatterPilotTable<AppointmentTypeRow, MatterPilotInsert<AppointmentTypeRow>, MatterPilotUpdate<AppointmentTypeRow>>
+      appointments: MatterPilotTable<AppointmentRow, MatterPilotInsert<AppointmentRow>, MatterPilotUpdate<AppointmentRow>>
+      appointment_participants: MatterPilotTable<AppointmentParticipantRow, MatterPilotInsert<AppointmentParticipantRow>, MatterPilotUpdate<AppointmentParticipantRow>>
+      appointment_tasks: MatterPilotTable<AppointmentTaskRow, MatterPilotInsert<AppointmentTaskRow>, MatterPilotUpdate<AppointmentTaskRow>>
+      appointment_documents: MatterPilotTable<AppointmentDocumentRow, MatterPilotInsert<AppointmentDocumentRow>, MatterPilotUpdate<AppointmentDocumentRow>>
+      appointment_document_drafts: MatterPilotTable<AppointmentDocumentDraftRow, MatterPilotInsert<AppointmentDocumentDraftRow>, MatterPilotUpdate<AppointmentDocumentDraftRow>>
+      appointment_intake: MatterPilotTable<AppointmentIntakeRow, MatterPilotInsert<AppointmentIntakeRow>, MatterPilotUpdate<AppointmentIntakeRow>>
+      appointment_reminders: MatterPilotTable<AppointmentReminderRow, MatterPilotInsert<AppointmentReminderRow>, MatterPilotUpdate<AppointmentReminderRow>>
+      appointment_packets: MatterPilotTable<AppointmentPacketRow, MatterPilotInsert<AppointmentPacketRow>, MatterPilotUpdate<AppointmentPacketRow>>
+      appointment_packet_reminders: MatterPilotTable<AppointmentPacketReminderRow, MatterPilotInsert<AppointmentPacketReminderRow>, MatterPilotUpdate<AppointmentPacketReminderRow>>
+      appointment_communications: MatterPilotTable<AppointmentCommunicationRow, MatterPilotInsert<AppointmentCommunicationRow>, MatterPilotUpdate<AppointmentCommunicationRow>>
+      matter_deadlines: MatterPilotTable<MatterDeadlineRow, MatterPilotInsert<MatterDeadlineRow>, MatterPilotUpdate<MatterDeadlineRow>>
+      matter_contacts: MatterPilotTable<MatterContactRow, MatterPilotInsert<MatterContactRow>, MatterPilotUpdate<MatterContactRow>>
+      booking_pages: MatterPilotTable<BookingPageRow, MatterPilotInsert<BookingPageRow>, MatterPilotUpdate<BookingPageRow>>
+      booking_requests: MatterPilotTable<BookingRequestRow, MatterPilotInsert<BookingRequestRow>, MatterPilotUpdate<BookingRequestRow>>
+      calendar_notes: MatterPilotTable<CalendarNoteRow, MatterPilotInsert<CalendarNoteRow>, MatterPilotUpdate<CalendarNoteRow>>
+      intake_reviews: MatterPilotTable<IntakeReviewRow, MatterPilotInsert<IntakeReviewRow>, MatterPilotUpdate<IntakeReviewRow>>
       analyses: {
         Row: {
           ai_model: string | null
@@ -1709,6 +1754,34 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_appointment_packet: {
+        Args: { p_token: string }
+        Returns: Json
+      }
+      submit_appointment_packet: {
+        Args: {
+          p_token: string
+          p_full_name: string
+          p_email: string
+          p_phone?: string | null
+          p_summary?: string | null
+          p_goals?: string | null
+          p_deadlines?: string | null
+          p_engagement_acknowledged?: boolean
+        }
+        Returns: Json
+      }
+      submit_public_booking_request: {
+        Args: {
+          p_appointment_type_name: string
+          p_email: string
+          p_full_name: string
+          p_requested_start: string
+          p_slug: string
+          p_summary?: string | null
+        }
+        Returns: string
+      }
       create_matter: {
         Args: {
           p_case_mode: string

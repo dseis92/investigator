@@ -16,10 +16,10 @@ const fontMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "TraceLine",
-    template: "%s · TraceLine",
+    default: "MatterPilot",
+    template: "%s · MatterPilot",
   },
-  description: "Evidence intelligence and litigation investigation workspace for defense teams.",
+  description: "Matter-aware scheduling and legal operations for modern law firms.",
 }
 
 export default function RootLayout({

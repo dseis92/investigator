@@ -43,9 +43,105 @@ async function getOrCreateUser(email: string, fullName: string) {
   return data.user.id
 }
 
+async function ensureMatterPilot(matterId: string, createdBy: string) {
+  const { data: appointmentTypes, error: typeError } = await admin
+    .from("appointment_types")
+    .upsert([
+      { matter_id: matterId, name: "Initial consultation", duration_minutes: 45, category: "consultation", created_by: createdBy },
+      { matter_id: matterId, name: "Client meeting", duration_minutes: 60, category: "meeting", created_by: createdBy },
+      { matter_id: matterId, name: "Deposition preparation", duration_minutes: 90, category: "deposition", created_by: createdBy },
+      { matter_id: matterId, name: "Mediation", duration_minutes: 120, category: "mediation", created_by: createdBy },
+    ], { onConflict: "matter_id,name" })
+    .select("id, name")
+  if (typeError || !appointmentTypes) throw typeError ?? new Error("Failed to seed MatterPilot appointment types")
+
+  const { error: pageError } = await admin
+    .from("booking_pages")
+    .upsert({ matter_id: matterId, slug: "demo", firm_name: "Harbor Legal", active: true, created_by: createdBy }, { onConflict: "slug" })
+  if (pageError) throw pageError
+  const { data: demoPage, error: demoPageError } = await admin.from("booking_pages").select("id").eq("slug", "demo").single()
+  if (demoPageError || !demoPage) throw demoPageError ?? new Error("Demo booking page was not returned")
+
+  const { data: existingRequests, error: requestError } = await admin
+    .from("booking_requests")
+    .select("id")
+    .eq("matter_id", matterId)
+    .eq("status", "pending")
+    .limit(1)
+  if (requestError) throw requestError
+  if (!existingRequests?.length) {
+    const { error: requestInsertError } = await admin.from("booking_requests").insert({
+      matter_id: matterId,
+      booking_page_id: demoPage.id,
+      appointment_type_name: "Initial consultation",
+      requested_start: "2026-09-25T18:00:00Z",
+      full_name: "Taylor Brooks",
+      email: "taylor.brooks@example.com",
+      summary: "I need help understanding the next steps in a criminal defense matter and would like to discuss the timeline.",
+      status: "pending",
+    })
+    if (requestInsertError) throw requestInsertError
+  }
+
+  const { data: existingAppointments, error: existingError } = await admin
+    .from("appointments")
+    .select("id, title")
+    .eq("matter_id", matterId)
+  if (existingError) throw existingError
+  await Promise.all([
+    admin.from("appointments").update({ workflow_key: "deposition_preparation" }).eq("id", existingAppointments?.find((appointment) => appointment.title === "Deposition preparation")?.id ?? ""),
+    admin.from("appointments").update({ workflow_key: "mediation" }).eq("id", existingAppointments?.find((appointment) => appointment.title === "Mediation conference")?.id ?? ""),
+    admin.from("appointments").update({ workflow_key: "expert_consultation" }).eq("id", existingAppointments?.find((appointment) => appointment.title === "Expert review")?.id ?? ""),
+  ])
+  if (existingAppointments?.length) return
+
+  const typeId = (name: string) => appointmentTypes.find((type) => type.name === name)?.id ?? null
+  const { data: appointments, error: appointmentError } = await admin
+    .from("appointments")
+    .insert([
+      { matter_id: matterId, appointment_type_id: typeId("Deposition preparation"), workflow_key: "deposition_preparation", title: "Deposition preparation", starts_at: "2026-09-21T14:00:00Z", ends_at: "2026-09-21T15:30:00Z", status: "confirmed", conflict_status: "clear", location: "Conference room 2", client_name: "Dana Ruiz", created_by: createdBy },
+      { matter_id: matterId, appointment_type_id: typeId("Mediation"), workflow_key: "mediation", title: "Mediation conference", starts_at: "2026-09-22T16:00:00Z", ends_at: "2026-09-22T18:00:00Z", status: "tentative", conflict_status: "issue", location: "Carter ADR · Room 4", client_name: "Northstar LLC", created_by: createdBy },
+      { matter_id: matterId, appointment_type_id: typeId("Expert meeting"), workflow_key: "expert_consultation", title: "Expert review", starts_at: "2026-09-23T15:00:00Z", ends_at: "2026-09-23T16:30:00Z", status: "confirmed", conflict_status: "clear", location: "Video call · Teams", client_name: "Dr. Priya Abbas", created_by: createdBy },
+    ])
+    .select("id, title")
+  if (appointmentError || !appointments) throw appointmentError ?? new Error("Failed to seed MatterPilot appointments")
+
+  const mediation = appointments.find((appointment) => appointment.title === "Mediation conference")
+  const deposition = appointments.find((appointment) => appointment.title === "Deposition preparation")
+  const expert = appointments.find((appointment) => appointment.title === "Expert review")
+  if (!mediation || !deposition || !expert) throw new Error("Seeded appointments were not returned")
+
+  await admin.from("appointment_tasks").insert([
+    { matter_id: matterId, appointment_id: deposition.id, label: "Conflict check complete", status: "done", is_blocking: true, created_by: createdBy },
+    { matter_id: matterId, appointment_id: deposition.id, label: "Witness statement reviewed", status: "done", is_blocking: true, created_by: createdBy },
+    { matter_id: matterId, appointment_id: mediation.id, label: "Conflict check complete", status: "done", is_blocking: true, created_by: createdBy },
+    { matter_id: matterId, appointment_id: mediation.id, label: "Mediation statement approved", status: "open", is_blocking: true, created_by: createdBy },
+    { matter_id: matterId, appointment_id: expert.id, label: "Materials shared", status: "done", is_blocking: true, created_by: createdBy },
+  ])
+  await admin.from("appointment_documents").insert([
+    { matter_id: matterId, appointment_id: deposition.id, name: "Deposition notice", status: "received", is_required: true, created_by: createdBy },
+    { matter_id: matterId, appointment_id: deposition.id, name: "Witness packet", status: "received", is_required: true, created_by: createdBy },
+    { matter_id: matterId, appointment_id: mediation.id, name: "Mediation statement", status: "requested", is_required: true, created_by: createdBy },
+    { matter_id: matterId, appointment_id: expert.id, name: "Expert packet", status: "received", is_required: true, created_by: createdBy },
+  ])
+  await admin.from("appointment_participants").insert([
+    { matter_id: matterId, appointment_id: deposition.id, display_name: "Dana Ruiz", participant_role: "witness", response_status: "confirmed", is_required: true },
+    { matter_id: matterId, appointment_id: mediation.id, display_name: "Northstar LLC", participant_role: "client", response_status: "pending", is_required: true },
+    { matter_id: matterId, appointment_id: expert.id, display_name: "Dr. Priya Abbas", participant_role: "expert", response_status: "confirmed", is_required: true },
+  ])
+  await admin.from("appointment_reminders").insert([
+    { matter_id: matterId, appointment_id: deposition.id, channel: "email", send_at: "2026-09-20T14:00:00Z", status: "planned" },
+    { matter_id: matterId, appointment_id: mediation.id, channel: "email", send_at: "2026-09-21T16:00:00Z", status: "planned" },
+    { matter_id: matterId, appointment_id: expert.id, channel: "email", send_at: "2026-09-22T15:00:00Z", status: "planned" },
+  ])
+}
+
 async function main() {
   const { data: existingMatter } = await admin.from("matters").select("id").eq("matter_number", MATTER_NUMBER).maybeSingle()
   if (existingMatter) {
+    const { data: existingMatterRow, error: existingMatterError } = await admin.from("matters").select("id, created_by").eq("id", existingMatter.id).single()
+    if (existingMatterError || !existingMatterRow) throw existingMatterError ?? new Error("Existing matter not found")
+    await ensureMatterPilot(existingMatterRow.id, existingMatterRow.created_by)
     console.log(`Matter ${MATTER_NUMBER} already seeded (id: ${existingMatter.id}). Nothing to do.`)
     return
   }
@@ -629,6 +725,8 @@ async function main() {
     { matter_id: matterId, conclusion_id: conclusionId("source_reported_assertion"), evidence_id: evidenceId("EV-003"), locator_note: "Interview transcript p.2" },
     { matter_id: matterId, conclusion_id: conclusionId("hypothesis"), evidence_id: evidenceId("EV-005"), locator_note: "DMV registration record" },
   ])
+
+  await ensureMatterPilot(matterId, attorneyId)
 
   console.log(`\nSeed complete. Matter id: ${matterId}`)
   console.log("Demo accounts (password for all: " + DEMO_PASSWORD + "):")

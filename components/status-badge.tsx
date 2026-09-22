@@ -2,11 +2,14 @@ import {
   AlertTriangle,
   CheckCircle2,
   CircleSlash,
+  Eye,
+  FileEdit,
   HelpCircle,
   History,
   Lightbulb,
   MessageSquareQuote,
   ShieldCheck,
+  XCircle,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -98,6 +101,26 @@ const STATUS_STYLES: Record<
     label: "Not applicable",
     icon: CircleSlash,
     className: "border-border bg-muted text-muted-foreground",
+  },
+  draft: {
+    label: "Draft",
+    icon: FileEdit,
+    className: "border-border bg-muted text-muted-foreground",
+  },
+  under_review: {
+    label: "Under review",
+    icon: Eye,
+    className: "border-sky-600/30 bg-sky-50 text-sky-800 dark:bg-sky-950/40 dark:text-sky-300",
+  },
+  final: {
+    label: "Final",
+    icon: CheckCircle2,
+    className: "border-emerald-600/30 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300",
+  },
+  rejected: {
+    label: "Rejected",
+    icon: XCircle,
+    className: "border-red-600/30 bg-red-50 text-red-800 dark:bg-red-950/40 dark:text-red-300",
   },
 }
 

@@ -71,6 +71,11 @@ type EntitySet = {
   reportId: string
   reviewDecisionId: string
   auditEventId: string
+  appointmentId: string
+  appointmentDocumentId: string
+  appointmentDocumentDraftId: string
+  deadlineId: string
+  contactId: string
 }
 
 let matterA: EntitySet
@@ -307,6 +312,75 @@ async function seedFullEntitySet(client: Client, userId: string, label: string):
   })
   if (aeErr || !auditEvent) throw aeErr
 
+  const startsAt = new Date(Date.now() + 60 * 60 * 1000)
+  const { data: appointment, error: appointmentError } = await client
+    .from("appointments")
+    .insert({
+      matter_id: matterId,
+      workflow_key: "custom",
+      title: `Test appointment ${label}`,
+      starts_at: startsAt.toISOString(),
+      ends_at: new Date(startsAt.getTime() + 60 * 60 * 1000).toISOString(),
+      created_by: userId,
+    })
+    .select("id")
+    .single()
+  if (appointmentError || !appointment) throw appointmentError
+
+  const { data: appointmentDocument, error: appointmentDocumentError } = await client
+    .from("appointment_documents")
+    .insert({
+      matter_id: matterId,
+      appointment_id: appointment.id,
+      name: "Intake questionnaire",
+      created_by: userId,
+    })
+    .select("id")
+    .single()
+  if (appointmentDocumentError || !appointmentDocument) throw appointmentDocumentError
+
+  const { data: appointmentDocumentDraft, error: appointmentDocumentDraftError } = await client
+    .from("appointment_document_drafts")
+    .insert({
+      matter_id: matterId,
+      appointment_document_id: appointmentDocument.id,
+      template_key: "intake_questionnaire",
+      content: `Security test draft ${label}`,
+      created_by: userId,
+      updated_by: userId,
+    })
+    .select("id")
+    .single()
+  if (appointmentDocumentDraftError || !appointmentDocumentDraft) throw appointmentDocumentDraftError
+
+  const { data: deadline, error: deadlineError } = await client
+    .from("matter_deadlines")
+    .insert({
+      matter_id: matterId,
+      title: `Test filing deadline ${label}`,
+      kind: "filing",
+      due_at: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString(),
+      priority: "high",
+      notes: `Security test deadline ${label}`,
+      created_by: userId,
+    })
+    .select("id")
+    .single()
+  if (deadlineError || !deadline) throw deadlineError
+
+  const { data: contact, error: contactError } = await client
+    .from("matter_contacts")
+    .insert({
+      matter_id: matterId,
+      display_name: `Test Contact ${label}`,
+      contact_type: "client",
+      email: `contact.${label.toLowerCase()}@example.com`,
+      created_by: userId,
+    })
+    .select("id")
+    .single()
+  if (contactError || !contact) throw contactError
+
   return {
     matterId,
     matterNumber,
@@ -329,6 +403,11 @@ async function seedFullEntitySet(client: Client, userId: string, label: string):
     reportId: report.id,
     reviewDecisionId: reviewDecision.id,
     auditEventId: auditEvent.id,
+    appointmentId: appointment.id,
+    appointmentDocumentId: appointmentDocument.id,
+    appointmentDocumentDraftId: appointmentDocumentDraft.id,
+    deadlineId: deadline.id,
+    contactId: contact.id,
   }
 }
 
@@ -407,6 +486,11 @@ describe("direct reads across every matter-owned table", () => {
     { table: "reports" },
     { table: "review_decisions" },
     { table: "audit_events" },
+    { table: "appointment_document_drafts" },
+    { table: "appointment_packet_reminders" },
+    { table: "appointment_communications" },
+    { table: "matter_deadlines" },
+    { table: "matter_contacts" },
   ]
 
   for (const { table } of tables) {
@@ -534,6 +618,194 @@ describe("direct writes into Matter B, supplying Matter B's own matter_id", () =
   test("cannot update Matter B's own matter row", async () => {
     const { data } = await clientA.from("matters").update({ name: "tampered" }).eq("id", matterB.matterId).select()
     assert.equal(data?.length ?? 0, 0)
+  })
+
+  test("cannot insert an appointment document draft into Matter B", async () => {
+    const { error } = await clientA.from("appointment_document_drafts").insert({
+      matter_id: matterB.matterId,
+      appointment_document_id: matterB.appointmentDocumentId,
+      template_key: "intake_questionnaire",
+      content: "forged",
+      created_by: userAId,
+      updated_by: userAId,
+    })
+    assert.ok(error)
+  })
+
+  test("cannot insert appointment communication into Matter B", async () => {
+    const { error } = await clientA.from("appointment_communications").insert({
+      matter_id: matterB.matterId,
+      appointment_id: matterB.appointmentId,
+      channel: "email",
+      recipient: "client@example.com",
+      subject: "forged",
+      body: "forged",
+      created_by: userAId,
+    })
+    assert.ok(error)
+  })
+
+  test("cannot insert a legal deadline into Matter B", async () => {
+    const { error } = await clientA.from("matter_deadlines").insert({
+      matter_id: matterB.matterId,
+      title: "forged deadline",
+      kind: "filing",
+      due_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      created_by: userAId,
+    })
+    assert.ok(error)
+  })
+
+  test("cannot insert a contact into Matter B", async () => {
+    const { error } = await clientA.from("matter_contacts").insert({
+      matter_id: matterB.matterId,
+      display_name: "forged contact",
+      contact_type: "client",
+      created_by: userAId,
+    })
+    assert.ok(error)
+  })
+})
+
+describe("client preparation packet", () => {
+  test("public packet is viewable once, submits intake, and closes", async () => {
+    const { error: intakeDraftError } = await clientA
+      .from("appointment_document_drafts")
+      .update({ status: "final" })
+      .eq("appointment_document_id", matterA.appointmentDocumentId)
+    assert.equal(intakeDraftError, null)
+
+    const { data: engagementDocument, error: engagementDocumentError } = await clientA
+      .from("appointment_documents")
+      .insert({
+        matter_id: matterA.matterId,
+        appointment_id: matterA.appointmentId,
+        name: "Engagement letter",
+        created_by: userAId,
+      })
+      .select("id")
+      .single()
+    if (engagementDocumentError || !engagementDocument) throw engagementDocumentError
+
+    const { error: engagementDraftError } = await clientA.from("appointment_document_drafts").insert({
+      matter_id: matterA.matterId,
+      appointment_document_id: engagementDocument.id,
+      template_key: "engagement_letter",
+      content: "Approved engagement letter for security test",
+      status: "final",
+      created_by: userAId,
+      updated_by: userAId,
+    })
+    assert.equal(engagementDraftError, null)
+
+    const packetToken = `packet-${RUN_ID}-${"x".repeat(55)}`
+    const { data: packet, error: packetError } = await clientA.from("appointment_packets").insert({
+      matter_id: matterA.matterId,
+      appointment_id: matterA.appointmentId,
+      token: packetToken,
+      expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      created_by: userAId,
+    }).select("id").single()
+    assert.equal(packetError, null)
+    assert.ok(packet)
+
+    const { error: reminderError } = await clientA.from("appointment_packet_reminders").insert({
+      matter_id: matterA.matterId,
+      packet_id: packet.id,
+      kind: "first_reminder",
+      send_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    })
+    assert.equal(reminderError, null)
+
+    const { data: packetView, error: viewError } = await anonClient.rpc("get_appointment_packet", { p_token: packetToken })
+    assert.equal(viewError, null)
+    assert.ok(packetView)
+    assert.equal((packetView as { documents: unknown[] }).documents.length, 2)
+
+    const { data: submission, error: submissionError } = await anonClient.rpc("submit_appointment_packet", {
+      p_token: packetToken,
+      p_full_name: "Packet Client",
+      p_email: `packet.client.${RUN_ID}@example.com`,
+      p_phone: "555-0100",
+      p_summary: "A factual summary",
+      p_goals: "Resolve the matter",
+      p_deadlines: "No known deadline",
+      p_engagement_acknowledged: true,
+    })
+    assert.equal(submissionError, null)
+    assert.equal((submission as { ok: boolean }).ok, true)
+
+    const { data: closedView, error: closedViewError } = await anonClient.rpc("get_appointment_packet", { p_token: packetToken })
+    assert.equal(closedViewError, null)
+    assert.equal(closedView, null, "a completed packet must not be viewable again")
+
+    const { data: intake } = await clientA.from("appointment_intake").select("full_name, client_completed_at").eq("appointment_id", matterA.appointmentId).single()
+    assert.equal(intake?.full_name, "Packet Client")
+    assert.ok(intake?.client_completed_at)
+
+    const { data: reminder } = await clientA.from("appointment_packet_reminders").select("status").eq("packet_id", packet.id).single()
+    assert.equal(reminder?.status, "cancelled", "completing a packet must cancel planned reminders")
+
+    const { data: communication, error: communicationError } = await clientA.from("appointment_communications").insert({
+      matter_id: matterA.matterId,
+      appointment_id: matterA.appointmentId,
+      channel: "email",
+      status: "queued",
+      recipient: "packet.client@example.com",
+      subject: "Packet follow-up",
+      body: "Your preparation packet is ready.",
+      created_by: userAId,
+    }).select("status").single()
+    assert.equal(communicationError, null)
+    assert.equal(communication?.status, "queued")
+  })
+})
+
+describe("matter deadlines", () => {
+  test("Matter A can complete and reopen its own deadline", async () => {
+    const { data: completed, error: completeError } = await clientA
+      .from("matter_deadlines")
+      .update({ status: "done" })
+      .eq("id", matterA.deadlineId)
+      .eq("matter_id", matterA.matterId)
+      .select("status")
+      .single()
+    assert.equal(completeError, null)
+    assert.equal(completed?.status, "done")
+
+    const { data: reopened, error: reopenError } = await clientA
+      .from("matter_deadlines")
+      .update({ status: "open" })
+      .eq("id", matterA.deadlineId)
+      .eq("matter_id", matterA.matterId)
+      .select("status")
+      .single()
+    assert.equal(reopenError, null)
+    assert.equal(reopened?.status, "open")
+  })
+})
+
+describe("matter contacts", () => {
+  test("Matter A can archive and reactivate its own contact", async () => {
+    const { data: archived, error: archiveError } = await clientA
+      .from("matter_contacts")
+      .update({ status: "archived" })
+      .eq("id", matterA.contactId)
+      .eq("matter_id", matterA.matterId)
+      .select("status")
+      .single()
+    assert.equal(archiveError, null)
+    assert.equal(archived?.status, "archived")
+
+    const { data: active, error: reactivateError } = await clientA
+      .from("matter_contacts")
+      .update({ status: "active" })
+      .eq("id", matterA.contactId)
+      .eq("matter_id", matterA.matterId)
+      .select("status")
+      .single()
+    assert.equal(reactivateError, null)
+    assert.equal(active?.status, "active")
   })
 })
 

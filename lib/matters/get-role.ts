@@ -31,3 +31,8 @@ export function canManageMembers(role: MatterRole | null) {
 export function canExcludeEvidence(role: MatterRole | null) {
   return role === "attorney" || role === "admin" || role === "investigator"
 }
+
+/** Same role set as canExcludeEvidence — mirrors the database's analysis_finalization_role_guard trigger. */
+export function canFinalizeAnalysis(role: MatterRole | null) {
+  return role === "attorney" || role === "admin" || role === "investigator"
+}

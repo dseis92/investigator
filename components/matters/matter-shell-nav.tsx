@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   ListTree,
   Scale,
+  Sparkles,
   Users,
 } from "lucide-react"
 import Link from "next/link"
@@ -21,6 +22,7 @@ const navItems = (matterId: string) => [
   { href: `/matters/${matterId}/evidence`, label: "Evidence", icon: ListTree },
   { href: `/matters/${matterId}/timeline`, label: "Timeline", icon: GitCompareArrows },
   { href: `/matters/${matterId}/contradictions`, label: "Contradictions", icon: GitCompareArrows },
+  { href: `/matters/${matterId}/analysis`, label: "Analysis", icon: Sparkles },
   { href: `/matters/${matterId}/reports`, label: "Reports", icon: FileText },
 ]
 
