@@ -5,7 +5,7 @@ import { randomBytes } from "node:crypto"
 import { z } from "zod"
 
 import { createClient } from "@/lib/supabase/server"
-import { getDocumentTemplate, renderDocumentTemplate } from "@/lib/matterpilot/documents"
+import { getDocumentFieldDefinitions, getDocumentTemplate, renderDocumentTemplate } from "@/lib/matterpilot/documents"
 import { getWorkflow, getWorkflowByLabel, getWorkflowDurationMinutes } from "@/lib/matterpilot/workflows"
 
 const appointmentSchema = z.object({
@@ -333,7 +333,7 @@ const createDocumentDraftSchema = z.object({
 })
 
 export type DocumentDraftActionResult =
-  | { ok: true; appointmentId: string; draftId: string; content: string }
+  | { ok: true; appointmentId: string; draftId: string; content: string; status?: "draft" | "final"; visibility?: "internal" | "client" }
   | { ok: false; error: string }
 
 function formatDraftDate(value: string) {
@@ -397,6 +397,9 @@ export async function createAppointmentDocumentDraftAction(input: z.input<typeof
       template_key: template.key,
       content,
       status: "draft",
+      visibility: "internal",
+      field_schema: getDocumentFieldDefinitions(template.key),
+      field_values: {},
       created_by: userData.user.id,
       updated_by: userData.user.id,
     }, { onConflict: "appointment_document_id" })
@@ -405,13 +408,14 @@ export async function createAppointmentDocumentDraftAction(input: z.input<typeof
   if (draftError || !draft) return { ok: false, error: draftError?.message ?? "Unable to save the document draft." }
 
   revalidatePath("/matterpilot")
-  return { ok: true, appointmentId: appointment.id, draftId: draft.id, content: draft.content }
+  return { ok: true, appointmentId: appointment.id, draftId: draft.id, content: draft.content, status: "draft", visibility: "internal" }
 }
 
 const saveDocumentDraftSchema = z.object({
   matterId: z.string().uuid(),
   draftId: z.string().uuid(),
   content: z.string().min(1).max(30000),
+  visibility: z.enum(["internal", "client"]).optional(),
 })
 
 export async function saveAppointmentDocumentDraftAction(input: z.input<typeof saveDocumentDraftSchema>): Promise<DocumentDraftActionResult> {
@@ -424,29 +428,35 @@ export async function saveAppointmentDocumentDraftAction(input: z.input<typeof s
 
   const { data: draft, error: draftError } = await supabase
     .from("appointment_document_drafts")
-    .update({ content: parsed.data.content, updated_by: userData.user.id, updated_at: new Date().toISOString() })
+    .update({
+      content: parsed.data.content,
+      ...(parsed.data.visibility ? { visibility: parsed.data.visibility } : {}),
+      updated_by: userData.user.id,
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", parsed.data.draftId)
     .eq("matter_id", parsed.data.matterId)
-    .select("id, content, appointment_document_id")
+    .select("id, content, appointment_document_id, status, visibility")
     .single()
   if (draftError || !draft) return { ok: false, error: draftError?.message ?? "Unable to save this document draft." }
 
   const { data: document, error: documentError } = await supabase
     .from("appointment_documents")
-    .select("appointment_id")
+    .select("appointment_id, name")
     .eq("id", draft.appointment_document_id)
     .eq("matter_id", parsed.data.matterId)
     .single()
   if (documentError || !document) return { ok: false, error: "The appointment linked to this draft could not be found." }
 
   revalidatePath("/matterpilot")
-  return { ok: true, appointmentId: document.appointment_id, draftId: draft.id, content: draft.content }
+  return { ok: true, appointmentId: document.appointment_id, draftId: draft.id, content: draft.content, status: draft.status as "draft" | "final", visibility: draft.visibility as "internal" | "client" }
 }
 
 const documentDraftStatusSchema = z.object({
   matterId: z.string().uuid(),
   draftId: z.string().uuid(),
   status: z.enum(["draft", "final"]),
+  visibility: z.enum(["internal", "client"]).optional(),
 })
 
 export async function updateAppointmentDocumentDraftStatusAction(input: z.input<typeof documentDraftStatusSchema>): Promise<MatterPilotActionResult> {
@@ -459,12 +469,75 @@ export async function updateAppointmentDocumentDraftStatusAction(input: z.input<
 
   const { data: draft, error: draftError } = await supabase
     .from("appointment_document_drafts")
-    .update({ status: parsed.data.status, updated_by: userData.user.id, updated_at: new Date().toISOString() })
+    .update({
+      status: parsed.data.status,
+      visibility: parsed.data.visibility ?? (parsed.data.status === "final" ? "client" : "internal"),
+      updated_by: userData.user.id,
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", parsed.data.draftId)
     .eq("matter_id", parsed.data.matterId)
     .select("appointment_document_id")
     .single()
   if (draftError || !draft) return { ok: false, error: draftError?.message ?? "Unable to update this draft." }
+
+  const { data: document, error: documentError } = await supabase
+    .from("appointment_documents")
+    .select("appointment_id, name")
+    .eq("id", draft.appointment_document_id)
+    .eq("matter_id", parsed.data.matterId)
+    .single()
+  if (documentError || !document) return { ok: false, error: "The appointment linked to this draft could not be found." }
+
+  if (document.name === "Engagement letter") {
+    const { data: appointment } = await supabase.from("appointments").select("client_email").eq("id", document.appointment_id).eq("matter_id", parsed.data.matterId).single()
+    if (parsed.data.status === "final" && (parsed.data.visibility ?? "client") === "client") {
+      const { error: signatureError } = await supabase.from("appointment_document_signatures").upsert({
+        matter_id: parsed.data.matterId,
+        appointment_document_id: draft.appointment_document_id,
+        signer_role: "client",
+        status: "requested",
+        signer_email: appointment?.client_email ?? null,
+        signer_name: null,
+        signature_text: null,
+        consent_text: null,
+        signed_at: null,
+        signed_version_id: null,
+        created_by: userData.user.id,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "matter_id,appointment_document_id,signer_role" })
+      if (signatureError) return { ok: false, error: signatureError.message }
+    } else if (parsed.data.status === "draft") {
+      await supabase.from("appointment_document_signatures").update({ status: "cancelled", updated_at: new Date().toISOString() }).eq("matter_id", parsed.data.matterId).eq("appointment_document_id", draft.appointment_document_id).eq("signer_role", "client")
+    }
+  }
+
+  revalidatePath("/matterpilot")
+  return { ok: true, appointmentId: document.appointment_id }
+}
+
+const documentDraftVisibilitySchema = z.object({
+  matterId: z.string().uuid(),
+  draftId: z.string().uuid(),
+  visibility: z.enum(["internal", "client"]),
+})
+
+export async function updateAppointmentDocumentDraftVisibilityAction(input: z.input<typeof documentDraftVisibilitySchema>): Promise<MatterPilotActionResult> {
+  const parsed = documentDraftVisibilitySchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: "That sharing setting could not be updated." }
+
+  const supabase = await createClient()
+  const { data: userData } = await supabase.auth.getUser()
+  if (!userData.user) return { ok: false, error: "Please sign in before changing document visibility." }
+
+  const { data: draft, error: draftError } = await supabase
+    .from("appointment_document_drafts")
+    .update({ visibility: parsed.data.visibility, updated_by: userData.user.id, updated_at: new Date().toISOString() })
+    .eq("id", parsed.data.draftId)
+    .eq("matter_id", parsed.data.matterId)
+    .select("appointment_document_id")
+    .single()
+  if (draftError || !draft) return { ok: false, error: draftError?.message ?? "Unable to update document visibility." }
 
   const { data: document, error: documentError } = await supabase
     .from("appointment_documents")
@@ -476,6 +549,42 @@ export async function updateAppointmentDocumentDraftStatusAction(input: z.input<
 
   revalidatePath("/matterpilot")
   return { ok: true, appointmentId: document.appointment_id }
+}
+
+const restoreDocumentDraftVersionSchema = z.object({
+  matterId: z.string().uuid(),
+  draftId: z.string().uuid(),
+  versionId: z.string().uuid(),
+})
+
+export async function restoreAppointmentDocumentDraftVersionAction(input: z.input<typeof restoreDocumentDraftVersionSchema>): Promise<DocumentDraftActionResult> {
+  const parsed = restoreDocumentDraftVersionSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: "That document version could not be restored." }
+
+  const supabase = await createClient()
+  const { data: userData } = await supabase.auth.getUser()
+  if (!userData.user) return { ok: false, error: "Please sign in before restoring a document version." }
+
+  const [{ data: draft, error: draftError }, { data: version, error: versionError }] = await Promise.all([
+    supabase.from("appointment_document_drafts").select("id, appointment_document_id").eq("id", parsed.data.draftId).eq("matter_id", parsed.data.matterId).single(),
+    supabase.from("appointment_document_versions").select("id, appointment_document_id, content, status, visibility, field_schema, field_values").eq("id", parsed.data.versionId).eq("matter_id", parsed.data.matterId).single(),
+  ])
+  if (draftError || !draft || versionError || !version || version.appointment_document_id !== draft.appointment_document_id) return { ok: false, error: "That document version is no longer available." }
+
+  const { data: updated, error: updateError } = await supabase
+    .from("appointment_document_drafts")
+    .update({ content: version.content, status: version.status, visibility: version.visibility, field_schema: version.field_schema, field_values: version.field_values, updated_by: userData.user.id, updated_at: new Date().toISOString() })
+    .eq("id", parsed.data.draftId)
+    .eq("matter_id", parsed.data.matterId)
+    .select("id, content, status, visibility")
+    .single()
+  if (updateError || !updated) return { ok: false, error: updateError?.message ?? "Unable to restore that document version." }
+
+  const { data: document, error: documentError } = await supabase.from("appointment_documents").select("appointment_id").eq("id", draft.appointment_document_id).eq("matter_id", parsed.data.matterId).single()
+  if (documentError || !document) return { ok: false, error: "The appointment linked to this draft could not be found." }
+
+  revalidatePath("/matterpilot")
+  return { ok: true, appointmentId: document.appointment_id, draftId: updated.id, content: updated.content, status: updated.status as "draft" | "final", visibility: updated.visibility as "internal" | "client" }
 }
 
 const clientPacketSchema = z.object({
@@ -504,10 +613,10 @@ export async function createAppointmentPacketAction(input: z.input<typeof client
 
   const documentIds = (documents ?? []).map((document) => document.id)
   const { data: drafts, error: draftsError } = documentIds.length
-    ? await supabase.from("appointment_document_drafts").select("appointment_document_id, status").in("appointment_document_id", documentIds).eq("matter_id", parsed.data.matterId)
+    ? await supabase.from("appointment_document_drafts").select("appointment_document_id, status, visibility").in("appointment_document_id", documentIds).eq("matter_id", parsed.data.matterId)
     : { data: [], error: null }
   if (draftsError) return { ok: false, error: "The approved client documents could not be loaded." }
-  const finalDocumentNames = new Set((documents ?? []).filter((document) => drafts?.some((draft) => draft.appointment_document_id === document.id && draft.status === "final")).map((document) => document.name))
+  const finalDocumentNames = new Set((documents ?? []).filter((document) => drafts?.some((draft) => draft.appointment_document_id === document.id && draft.status === "final" && draft.visibility === "client")).map((document) => document.name))
   if (!finalDocumentNames.has("Intake questionnaire") || !finalDocumentNames.has("Engagement letter")) {
     return { ok: false, error: "Create and approve the intake questionnaire and engagement letter before creating the client packet." }
   }
@@ -565,6 +674,79 @@ export async function revokeAppointmentPacketAction(input: z.input<typeof client
 
   revalidatePath("/matterpilot")
   return { ok: true, appointmentId: packet.appointment_id }
+}
+
+const clientPortalAccessSchema = z.object({
+  matterId: z.string().uuid(),
+  appointmentId: z.string().uuid(),
+})
+
+export type ClientPortalAccessActionResult =
+  | { ok: true; matterId: string; email: string }
+  | { ok: false; error: string }
+
+export async function enableClientPortalAccessAction(input: z.input<typeof clientPortalAccessSchema>): Promise<ClientPortalAccessActionResult> {
+  const parsed = clientPortalAccessSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: "That client portal access could not be enabled." }
+
+  const supabase = await createClient()
+  const { data: userData } = await supabase.auth.getUser()
+  if (!userData.user) return { ok: false, error: "Please sign in before enabling client portal access." }
+
+  const { data: appointment, error: appointmentError } = await supabase
+    .from("appointments")
+    .select("id, client_name, client_email")
+    .eq("id", parsed.data.appointmentId)
+    .eq("matter_id", parsed.data.matterId)
+    .single()
+  if (appointmentError || !appointment) return { ok: false, error: "This appointment is no longer available." }
+
+  const email = appointment.client_email?.trim().toLowerCase() ?? ""
+  if (!email) return { ok: false, error: "Add the client's email to this appointment before enabling portal access." }
+
+  const { error } = await supabase.from("client_portal_grants").upsert({
+    matter_id: parsed.data.matterId,
+    client_email: email,
+    client_name: appointment.client_name?.trim() || null,
+    status: "active",
+    revoked_at: null,
+    created_by: userData.user.id,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "matter_id,client_email" })
+  if (error) return { ok: false, error: error.message }
+
+  revalidatePath("/matterpilot")
+  revalidatePath("/portal")
+  return { ok: true, matterId: parsed.data.matterId, email }
+}
+
+export async function revokeClientPortalAccessAction(input: z.input<typeof clientPortalAccessSchema>): Promise<ClientPortalAccessActionResult> {
+  const parsed = clientPortalAccessSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: "That client portal access could not be revoked." }
+
+  const supabase = await createClient()
+  const { data: userData } = await supabase.auth.getUser()
+  if (!userData.user) return { ok: false, error: "Please sign in before revoking client portal access." }
+
+  const { data: appointment, error: appointmentError } = await supabase
+    .from("appointments")
+    .select("client_email")
+    .eq("id", parsed.data.appointmentId)
+    .eq("matter_id", parsed.data.matterId)
+    .single()
+  if (appointmentError || !appointment?.client_email) return { ok: false, error: "This appointment does not have a client email." }
+
+  const { error } = await supabase
+    .from("client_portal_grants")
+    .update({ status: "revoked", revoked_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq("matter_id", parsed.data.matterId)
+    .eq("client_email", appointment.client_email.trim().toLowerCase())
+    .eq("status", "active")
+  if (error) return { ok: false, error: error.message }
+
+  revalidatePath("/matterpilot")
+  revalidatePath("/portal")
+  return { ok: true, matterId: parsed.data.matterId, email: appointment.client_email.trim().toLowerCase() }
 }
 
 const appointmentEmailSchema = z.object({
@@ -846,6 +1028,9 @@ const clientPacketSubmissionSchema = z.object({
   goals: z.string().trim().max(3000).optional(),
   deadlines: z.string().trim().max(1500).optional(),
   engagementAcknowledged: z.boolean(),
+  fieldValues: z.record(z.string(), z.string()).optional(),
+  signatureName: z.string().trim().max(160).optional(),
+  signatureConsent: z.boolean().optional(),
 })
 
 export async function submitClientPacketAction(input: z.input<typeof clientPacketSubmissionSchema>): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -862,6 +1047,9 @@ export async function submitClientPacketAction(input: z.input<typeof clientPacke
     p_goals: parsed.data.goals || null,
     p_deadlines: parsed.data.deadlines || null,
     p_engagement_acknowledged: parsed.data.engagementAcknowledged,
+    p_field_values: parsed.data.fieldValues ?? {},
+    p_signature_name: parsed.data.signatureName || null,
+    p_signature_consent: parsed.data.signatureConsent ?? false,
   })
   if (error) return { ok: false, error: "This preparation link is unavailable. Please contact the firm." }
 

@@ -15,6 +15,37 @@ export type DocumentTemplate = {
   body: string
 }
 
+export type DocumentFieldDefinition = {
+  key: string
+  label: string
+  type: "text" | "email" | "date" | "textarea"
+  required?: boolean
+  clientEditable?: boolean
+}
+
+const CLIENT_FIELD = { clientEditable: true } as const
+
+const DOCUMENT_FIELDS: Record<string, DocumentFieldDefinition[]> = {
+  intake_questionnaire: [
+    { key: "full_name", label: "Full legal name", type: "text", required: true, ...CLIENT_FIELD },
+    { key: "preferred_name", label: "Preferred name and pronouns", type: "text", ...CLIENT_FIELD },
+    { key: "phone", label: "Best phone number", type: "text", ...CLIENT_FIELD },
+    { key: "email", label: "Best email address", type: "email", required: true, ...CLIENT_FIELD },
+    { key: "matter_overview", label: "What happened?", type: "textarea", ...CLIENT_FIELD },
+    { key: "desired_outcome", label: "What outcome are you seeking?", type: "textarea", ...CLIENT_FIELD },
+    { key: "deadlines", label: "Deadlines, hearings, or urgent concerns", type: "textarea", ...CLIENT_FIELD },
+    { key: "key_people", label: "Key people and entities", type: "textarea", ...CLIENT_FIELD },
+    { key: "key_documents", label: "Key documents and evidence", type: "textarea", ...CLIENT_FIELD },
+    { key: "prior_proceedings", label: "Prior advice or proceedings", type: "textarea", ...CLIENT_FIELD },
+  ],
+  engagement_letter: [
+    { key: "scope", label: "Scope of representation", type: "textarea", required: true, ...CLIENT_FIELD },
+    { key: "fee_arrangement", label: "Fee arrangement", type: "text", required: true, ...CLIENT_FIELD },
+    { key: "initial_retainer", label: "Initial deposit or retainer", type: "text", ...CLIENT_FIELD },
+    { key: "billing_terms", label: "Billing frequency and payment method", type: "text", ...CLIENT_FIELD },
+  ],
+}
+
 const commonHeader = (title: string) => `DRAFT — ATTORNEY REVIEW REQUIRED
 CONFIDENTIAL — INTERNAL WORK PRODUCT
 
@@ -451,6 +482,10 @@ Notes or exceptions: ______________________________________________`,
 export function getDocumentTemplate(name: string) {
   const normalized = name.trim().toLowerCase()
   return DOCUMENT_TEMPLATES.find((template) => template.name.toLowerCase() === normalized) ?? null
+}
+
+export function getDocumentFieldDefinitions(templateKey: string): DocumentFieldDefinition[] {
+  return DOCUMENT_FIELDS[templateKey] ?? []
 }
 
 export function renderDocumentTemplate(template: DocumentTemplate, context: DocumentDraftContext) {
