@@ -20,6 +20,9 @@ export default async function MatterPilotPage() {
 
   const matterRows = matters ?? []
   const matterIds = matterRows.map((matter) => matter.id)
+  const { data: portalGrants } = matterIds.length
+    ? await supabase.from("client_portal_grants").select("id, matter_id, client_email, status, last_accessed_at, revoked_at").in("matter_id", matterIds)
+    : { data: [] }
   const { data: calendarNotes } = await supabase
     .from("calendar_notes")
     .select("id, matter_id, title, note, starts_at, ends_at")
@@ -55,8 +58,18 @@ export default async function MatterPilotPage() {
   const { data: drafts } = documentIds.length
     ? await supabase
         .from("appointment_document_drafts")
-        .select("id, appointment_document_id, template_key, content, status")
+        .select("id, appointment_document_id, template_key, content, status, visibility, field_schema, field_values")
         .in("appointment_document_id", documentIds)
+    : { data: [] }
+  const { data: draftVersions } = documentIds.length
+    ? await supabase
+        .from("appointment_document_versions")
+        .select("id, appointment_document_id, version_number, content, status, visibility, field_schema, field_values, created_at")
+        .in("appointment_document_id", documentIds)
+        .order("version_number", { ascending: false })
+    : { data: [] }
+  const { data: signatures } = documentIds.length
+    ? await supabase.from("appointment_document_signatures").select("id, appointment_document_id, signer_role, status, signer_name, signer_email, signed_at").in("appointment_document_id", documentIds)
     : { data: [] }
   const packetIds = (packets ?? []).map((packet) => packet.id)
   const { data: packetReminders } = packetIds.length
@@ -72,6 +85,7 @@ export default async function MatterPilotPage() {
     const documentsForAppointment = (documents ?? []).filter((document) => document.appointment_id === appointment.id)
     const participantsForAppointment = (participants ?? []).filter((participant) => participant.appointment_id === appointment.id)
     const packetForAppointment = (packets ?? []).find((packet) => packet.appointment_id === appointment.id)
+    const portalGrantForAppointment = (portalGrants ?? []).find((grant) => grant.matter_id === appointment.matter_id && grant.client_email.toLowerCase() === (appointment.client_email ?? "").toLowerCase())
     const remindersForPacket = packetForAppointment ? (packetReminders ?? []).filter((reminder) => reminder.packet_id === packetForAppointment.id) : []
     const communicationsForAppointment = (communications ?? []).filter((communication) => communication.appointment_id === appointment.id)
     const participantDeclined = participantsForAppointment.some((participant) => participant.is_required && participant.response_status === "declined")
@@ -91,6 +105,9 @@ export default async function MatterPilotPage() {
       day,
       start: start.getUTCHours() + start.getUTCMinutes() / 60,
       end: end.getUTCHours() + end.getUTCMinutes() / 60,
+      startAt: appointment.starts_at,
+      endAt: appointment.ends_at,
+      date: appointment.starts_at.slice(0, 10),
       readiness: (blocked ? "blocked" : atRisk ? "at_risk" : "ready") as Appointment["readiness"],
       participants: participantsForAppointment.length,
       location: appointment.location || "Location to be confirmed",
@@ -98,6 +115,7 @@ export default async function MatterPilotPage() {
       checklist: tasksForAppointment.map((task) => ({ id: task.id, label: task.label, done: task.status !== "open", status: task.status as "open" | "done" | "waived", isBlocking: task.is_blocking })),
       documents: documentsForAppointment.map((document) => {
         const draft = (drafts ?? []).find((item) => item.appointment_document_id === document.id)
+        const signature = (signatures ?? []).find((item) => item.appointment_document_id === document.id && item.signer_role === "client")
         return {
           id: document.id,
           label: document.name,
@@ -107,6 +125,9 @@ export default async function MatterPilotPage() {
           draftId: draft?.id,
           draftContent: draft?.content,
           draftStatus: draft?.status as "draft" | "final" | undefined,
+          draftVisibility: draft?.visibility as "internal" | "client" | undefined,
+          signatureStatus: signature?.status as "requested" | "signed" | "declined" | "cancelled" | undefined,
+          versions: draft ? (draftVersions ?? []).filter((version) => version.appointment_document_id === document.id).map((version) => ({ id: version.id, versionNumber: version.version_number, content: version.content, status: version.status as "draft" | "final", visibility: version.visibility as "internal" | "client", createdAt: version.created_at })) : [],
           templateKey: getDocumentTemplate(document.name)?.key ?? null,
         }
       }),
@@ -121,6 +142,12 @@ export default async function MatterPilotPage() {
         viewedAt: packetForAppointment.viewed_at,
         completedAt: packetForAppointment.completed_at,
         reminders: remindersForPacket.map((reminder) => ({ id: reminder.id, kind: reminder.kind as "first_reminder" | "final_reminder", sendAt: reminder.send_at, status: reminder.status as "planned" | "sent" | "cancelled" })),
+      } : undefined,
+      portalAccess: portalGrantForAppointment ? {
+        id: portalGrantForAppointment.id,
+        status: portalGrantForAppointment.status as "active" | "revoked",
+        lastAccessedAt: portalGrantForAppointment.last_accessed_at,
+        revokedAt: portalGrantForAppointment.revoked_at,
       } : undefined,
     }
   })
@@ -142,6 +169,9 @@ export default async function MatterPilotPage() {
       day: (start.getUTCDay() + 6) % 7,
       start: start.getUTCHours() + start.getUTCMinutes() / 60,
       end: end.getUTCHours() + end.getUTCMinutes() / 60,
+      startAt: note.starts_at,
+      endAt: note.ends_at,
+      date: note.starts_at.slice(0, 10),
       readiness: "ready",
       participants: 0,
       location: "Internal calendar",

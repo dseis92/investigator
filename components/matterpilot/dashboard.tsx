@@ -3,6 +3,7 @@
 import Link from "next/link"
 import {
   AlarmClock,
+  AlertTriangle,
   ArrowUpRight,
   Bell,
   CalendarDays,
@@ -17,11 +18,12 @@ import {
   Command,
   ContactRound,
   FileText,
-  Filter,
+  History,
   LockKeyhole,
   Gavel,
   LayoutDashboard,
   Link2,
+  List,
   Mail,
   Menu,
   MessageSquareText,
@@ -44,13 +46,17 @@ import {
   createAppointmentDocumentDraftAction,
   createAppointmentAction,
   createAppointmentPacketAction,
+  enableClientPortalAccessAction,
   createMatterDeadlineAction,
   createMatterContactAction,
   queueAppointmentEmailAction,
   revokeAppointmentPacketAction,
+  revokeClientPortalAccessAction,
   saveAppointmentEmailDraftAction,
   saveAppointmentDocumentDraftAction,
+  restoreAppointmentDocumentDraftVersionAction,
   updateAppointmentDocumentDraftStatusAction,
+  updateAppointmentDocumentDraftVisibilityAction,
   updateAppointmentConflictAction,
   updateAppointmentDocumentAction,
   updateAppointmentCommunicationAction,
@@ -89,14 +95,18 @@ export type Appointment = {
   day: number
   start: number
   end: number
+  date?: string
+  startAt?: string
+  endAt?: string
   readiness: Readiness
   participants: number
   location: string
   owner: string
   checklist: { id?: string; label: string; done: boolean; status?: "open" | "done" | "waived"; isBlocking?: boolean }[]
-  documents: { id?: string; label: string; status: "ready" | "requested" | "missing"; sourceStatus?: "requested" | "received" | "signed" | "waived"; isRequired?: boolean; draftId?: string; draftContent?: string; draftStatus?: "draft" | "final"; templateKey?: string | null }[]
+  documents: { id?: string; label: string; status: "ready" | "requested" | "missing"; sourceStatus?: "requested" | "received" | "signed" | "waived"; isRequired?: boolean; draftId?: string; draftContent?: string; draftStatus?: "draft" | "final"; draftVisibility?: "internal" | "client"; signatureStatus?: "requested" | "signed" | "declined" | "cancelled"; versions?: { id: string; versionNumber: number; content: string; status: "draft" | "final"; visibility: "internal" | "client"; createdAt: string }[]; templateKey?: string | null }[]
   participantDetails?: { id: string; displayName: string; responseStatus: "pending" | "confirmed" | "declined"; isRequired: boolean }[]
   packet?: { id: string; status: "active" | "completed" | "revoked" | "expired"; expiresAt: string; viewedAt: string | null; completedAt: string | null; reminders: { id: string; kind: "first_reminder" | "final_reminder"; sendAt: string; status: "planned" | "sent" | "cancelled" }[] }
+  portalAccess?: { id: string; status: "active" | "revoked"; lastAccessedAt: string | null; revokedAt: string | null }
   communications?: { id: string; channel: "email" | "sms"; direction: "outbound" | "inbound"; status: "draft" | "queued" | "sent" | "failed" | "cancelled"; recipient: string | null; subject: string | null; body: string; createdAt: string; sentAt: string | null }[]
 }
 
@@ -352,6 +362,10 @@ function MiniAvatar({ label, tone = "navy" }: { label: string; tone?: "navy" | "
 
 function AppointmentCard({ appointment, onSelect }: { appointment: Appointment; onSelect: () => void }) {
   const config = STATUS[appointment.readiness]
+  const startDate = appointment.startAt ? new Date(appointment.startAt) : undefined
+  const endDate = appointment.endAt ? new Date(appointment.endAt) : undefined
+  const startHour = startDate ? startDate.getHours() + startDate.getMinutes() / 60 : appointment.start
+  const endHour = endDate ? endDate.getHours() + endDate.getMinutes() / 60 : appointment.end
   return (
     <button
       type="button"
@@ -360,7 +374,7 @@ function AppointmentCard({ appointment, onSelect }: { appointment: Appointment; 
         "group absolute inset-x-1 overflow-hidden rounded-lg border p-2 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:ring-2 focus-visible:ring-[#b65f3a]/50",
         config.accent
       )}
-      style={{ top: `${(appointment.start - 8) * 76 + 4}px`, height: `${Math.max((appointment.end - appointment.start) * 76 - 8, 58)}px` }}
+      style={{ top: `${(startHour - 8) * 76 + 4}px`, height: `${Math.max((endHour - startHour) * 76 - 8, 58)}px` }}
     >
       <div className="flex items-start justify-between gap-1">
         <span className="truncate text-[11px] font-bold tracking-[-0.01em]">{appointment.title}</span>
@@ -369,7 +383,7 @@ function AppointmentCard({ appointment, onSelect }: { appointment: Appointment; 
       <p className="mt-1 truncate text-[11px] opacity-75">{appointment.client}</p>
       <div className="mt-2 flex items-center gap-1 text-[10px] opacity-65">
         <Clock3 className="size-3" />
-        {formatTime(appointment.start)}
+        {formatTime(startHour)}
         <span>·</span>
         <UsersRound className="size-3" />
         {appointment.participants}
@@ -386,6 +400,21 @@ function formatTime(hour: number) {
   return `${normalized}:${String(minutes).padStart(2, "0")} ${suffix}`
 }
 
+function appointmentStartDate(appointment: Appointment) {
+  return appointment.startAt ? new Date(appointment.startAt) : null
+}
+
+function appointmentDayLabel(appointment: Appointment) {
+  const date = appointmentStartDate(appointment)
+  return date ? new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" }).format(date) : WEEK[appointment.day]?.full ?? "Scheduled date"
+}
+
+function appointmentTimeRange(appointment: Appointment) {
+  const start = appointmentStartDate(appointment)
+  const end = appointment.endAt ? new Date(appointment.endAt) : null
+  return `${start ? formatTime(start.getHours() + start.getMinutes() / 60) : formatTime(appointment.start)} – ${end ? formatTime(end.getHours() + end.getMinutes() / 60) : formatTime(appointment.end)}`
+}
+
 function ReadinessCard({ appointment, onSelect }: { appointment: Appointment; onSelect: () => void }) {
   const config = STATUS[appointment.readiness]
   const Icon = config.icon
@@ -398,7 +427,7 @@ function ReadinessCard({ appointment, onSelect }: { appointment: Appointment; on
       <span className="min-w-0 flex-1">
         <span className="flex items-start justify-between gap-2">
           <span className="truncate text-sm font-semibold text-[#23313d]">{appointment.title}</span>
-          <span className="shrink-0 text-[11px] font-medium text-[#8b8d88]">{WEEK[appointment.day].label}</span>
+          <span className="shrink-0 text-[11px] font-medium text-[#8b8d88]">{appointmentDayLabel(appointment).split(",")[0]}</span>
         </span>
         <span className="mt-0.5 block truncate text-xs text-[#7d817c]">{appointment.client} · {appointment.matter}</span>
         <span className="mt-2 flex items-center gap-1.5 text-[11px] text-[#8b8d88]">
@@ -410,6 +439,99 @@ function ReadinessCard({ appointment, onSelect }: { appointment: Appointment; on
 }
 
 type AppointmentSlot = { date: string; time: string }
+
+type CalendarFilter = "all" | Readiness | "notes"
+
+function localDateKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
+}
+
+function startOfWorkWeek(date: Date) {
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+  const day = start.getDay()
+  start.setDate(start.getDate() + (day === 0 ? -6 : 1 - day))
+  return start
+}
+
+function workWeekDays(anchor: Date) {
+  const start = startOfWorkWeek(anchor)
+  return Array.from({ length: 5 }, (_, index) => {
+    const day = new Date(start)
+    day.setDate(start.getDate() + index)
+    return day
+  })
+}
+
+function calendarEventDate(appointment: Appointment) {
+  return appointment.startAt ? new Date(appointment.startAt) : null
+}
+
+function calendarEventHour(appointment: Appointment) {
+  const start = calendarEventDate(appointment)
+  return start ? start.getHours() + start.getMinutes() / 60 : appointment.start
+}
+
+function calendarEventEndHour(appointment: Appointment) {
+  const end = appointment.endAt ? new Date(appointment.endAt) : null
+  return end ? end.getHours() + end.getMinutes() / 60 : appointment.end
+}
+
+function CalendarBoard({ appointments, onSelect, onCreate }: { appointments: Appointment[]; onSelect: (appointment: Appointment) => void; onCreate: (slot?: AppointmentSlot) => void }) {
+  const firstDatedAppointment = appointments.find((appointment) => appointment.startAt)?.startAt
+  const [anchor, setAnchor] = useState(() => startOfWorkWeek(firstDatedAppointment ? new Date(firstDatedAppointment) : new Date()))
+  const [view, setView] = useState<"week" | "agenda">("week")
+  const [filter, setFilter] = useState<CalendarFilter>("all")
+  const days = workWeekDays(anchor)
+  const dayKeys = new Set(days.map(localDateKey))
+  const weekAppointments = appointments.filter((appointment) => {
+    const date = calendarEventDate(appointment)
+    if (!date || !dayKeys.has(localDateKey(date))) return false
+    if (filter === "notes") return Boolean(appointment.isNote)
+    if (filter !== "all") return appointment.readiness === filter && !appointment.isNote
+    return true
+  })
+  const conflicts = weekAppointments.reduce((count, appointment, index) => {
+    const date = calendarEventDate(appointment)
+    if (!date) return count
+    const start = appointment.startAt ? new Date(appointment.startAt).getTime() : 0
+    const overlaps = weekAppointments.some((other, otherIndex) => {
+      if (index === otherIndex || !other.startAt || !other.endAt || !appointment.endAt) return false
+      const otherDate = calendarEventDate(other)
+      if (!otherDate || localDateKey(otherDate) !== localDateKey(date)) return false
+      return start < new Date(other.endAt).getTime() && new Date(appointment.endAt).getTime() > new Date(other.startAt).getTime()
+    })
+    return count + (overlaps ? 1 : 0)
+  }, 0) / 2
+  const weekLabel = `${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(days[0])} – ${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(days[4])}`
+
+  function moveWeek(amount: number) {
+    const next = new Date(anchor)
+    next.setDate(next.getDate() + amount * 7)
+    setAnchor(next)
+  }
+
+  return (
+    <div id="calendar" className="min-w-0 rounded-2xl border border-[#ded9d0] bg-[#fbfaf7] shadow-sm">
+      <div className="flex flex-col gap-4 border-b border-[#e8e3da] px-5 py-4 sm:px-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div><div className="flex items-center gap-2"><h2 className="font-serif text-xl font-semibold text-[#23313d]">Calendar</h2><span className="rounded-full bg-[#eeeae3] px-2 py-0.5 text-[10px] font-bold text-[#777b76]">Work week</span></div><p className="mt-1 text-xs text-[#8b8d88]">{weekLabel} · Click any open time to schedule an appointment or note.</p></div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1 rounded-lg border border-[#ded9d0] bg-white p-1" role="group" aria-label="Calendar view"><button type="button" onClick={() => setView("week")} className={cn("inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-semibold", view === "week" ? "bg-[#23313d] text-white" : "text-[#7b817b] hover:bg-[#f1eee8]")}><CalendarDays className="size-3.5" />Week</button><button type="button" onClick={() => setView("agenda")} className={cn("inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-semibold", view === "agenda" ? "bg-[#23313d] text-white" : "text-[#7b817b] hover:bg-[#f1eee8]")}><List className="size-3.5" />Agenda</button></div>
+            <button type="button" onClick={() => { setAnchor(startOfWorkWeek(new Date())) }} className="rounded-lg border border-[#ded9d0] bg-white px-2.5 py-2 text-[11px] font-semibold text-[#59645e] hover:border-[#c08a6d]">Today</button>
+            <button type="button" onClick={() => moveWeek(-1)} className="rounded-lg p-2 text-[#69736d] hover:bg-[#eeeae3]" aria-label="Previous work week"><ChevronLeft className="size-4" /></button>
+            <button type="button" onClick={() => moveWeek(1)} className="rounded-lg p-2 text-[#69736d] hover:bg-[#eeeae3]" aria-label="Next work week"><ChevronRight className="size-4" /></button>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Calendar filters"><span className="mr-1 text-[10px] font-bold uppercase tracking-[0.14em] text-[#9b9d97]">Show</span>{(["all", "ready", "at_risk", "blocked", "notes"] as CalendarFilter[]).map((option) => <button key={option} type="button" onClick={() => setFilter(option)} className={cn("rounded-full border px-2.5 py-1 text-[10px] font-semibold transition-colors", filter === option ? "border-[#b65f3a] bg-[#fff5ef] text-[#a24f31]" : "border-[#e1dbd1] bg-white text-[#7b817b] hover:border-[#c08a6d]")}>{option === "all" ? "Everything" : option === "at_risk" ? "At risk" : option === "notes" ? "Notes" : option[0].toUpperCase() + option.slice(1)}</button>)}</div>
+          <div className="flex items-center gap-3 text-[10px] font-semibold text-[#8b8d88]"><span className="inline-flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-emerald-500" />{Math.max(days.length * 10 - weekAppointments.length, 0)} open windows</span><span className={cn("inline-flex items-center gap-1.5", conflicts ? "text-rose-700" : "text-[#8b8d88]")}><AlertTriangle className="size-3.5" />{conflicts ? `${conflicts} overlap${conflicts === 1 ? "" : "s"}` : "No overlaps"}</span></div>
+        </div>
+      </div>
+
+      {view === "week" ? <div className="overflow-x-auto"><div className="min-w-[780px]"><div className="grid grid-cols-[58px_repeat(5,minmax(140px,1fr))] border-b border-[#e8e3da]"><div />{days.map((day) => <button key={localDateKey(day)} type="button" onClick={() => onCreate({ date: localDateKey(day), time: "09:00" })} className="px-2 py-3 text-center transition-colors hover:bg-[#fff5ef]"><span className="block text-[10px] font-bold uppercase tracking-[0.16em] text-[#8b8d88]">{new Intl.DateTimeFormat("en-US", { weekday: "short" }).format(day)}</span><span className={cn("mt-1 inline-flex size-7 items-center justify-center rounded-full text-sm font-semibold", localDateKey(day) === localDateKey(new Date()) ? "bg-[#b65f3a] text-white" : "text-[#23313d]")}>{day.getDate()}</span></button>)}</div><div className="grid grid-cols-[58px_repeat(5,minmax(140px,1fr))]"><div className="relative">{TIMES.map((time) => <div key={time} className="h-[76px] border-b border-[#eeeae3] pr-2 pt-1 text-right text-[10px] text-[#a1a39d]">{time > 12 ? time - 12 : time}{time >= 12 ? "p" : "a"}</div>)}</div>{days.map((day) => { const dateKey = localDateKey(day); const dayAppointments = weekAppointments.filter((appointment) => calendarEventDate(appointment) && localDateKey(calendarEventDate(appointment)!) === dateKey); return <div key={dateKey} className="relative border-l border-[#eeeae3]">{TIMES.map((time) => <div key={time} className="relative h-[76px] border-b border-[#eeeae3]"><button type="button" aria-label={`Create appointment on ${new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" }).format(day)} at ${formatTime(time)}`} onClick={() => onCreate({ date: dateKey, time: `${String(time).padStart(2, "0")}:00` })} className="absolute inset-0 z-0 rounded-sm transition-colors hover:bg-[#fff5ef] focus-visible:bg-[#fff5ef]" /></div>)}{dayAppointments.map((appointment) => <AppointmentCard key={appointment.id} appointment={appointment} onSelect={() => onSelect(appointment)} />)}</div> })}</div></div></div> : <div className="divide-y divide-[#e8e3da] px-5 sm:px-6">{days.map((day) => { const dateKey = localDateKey(day); const dayAppointments = weekAppointments.filter((appointment) => calendarEventDate(appointment) && localDateKey(calendarEventDate(appointment)!) === dateKey).sort((a, b) => calendarEventHour(a) - calendarEventHour(b)); return <div key={dateKey} className="py-4"><div className="mb-3 flex items-center justify-between"><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#9b765f]">{new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" }).format(day)}</p><button type="button" onClick={() => onCreate({ date: dateKey, time: "09:00" })} className="text-[11px] font-semibold text-[#b65f3a] hover:underline"><Plus className="mr-1 inline size-3" />Add</button></div>{dayAppointments.length ? <div className="space-y-2">{dayAppointments.map((appointment) => { const config = STATUS[appointment.readiness]; const Icon = appointment.isNote ? CalendarClock : config.icon; return <button key={appointment.id} type="button" onClick={() => onSelect(appointment)} className="flex w-full items-center gap-3 rounded-xl border border-[#e8e3da] bg-white p-3 text-left transition-colors hover:border-[#c08a6d] hover:bg-[#fffaf6]"><span className={cn("flex size-9 shrink-0 items-center justify-center rounded-xl", appointment.isNote ? "bg-[#e8eef0] text-[#385367]" : config.accent)}><Icon className="size-4" /></span><span className="min-w-0 flex-1"><span className="flex items-center gap-2"><span className="truncate text-sm font-semibold text-[#39443f]">{appointment.title}</span><span className="rounded-full bg-[#f1eee8] px-2 py-0.5 text-[10px] font-semibold text-[#737872]">{appointment.isNote ? "Note" : config.label}</span></span><span className="mt-1 block truncate text-xs text-[#8b8d88]">{formatTime(calendarEventHour(appointment))} – {formatTime(calendarEventEndHour(appointment))} · {appointment.client} · {appointment.matter}</span></span><ArrowUpRight className="size-4 shrink-0 text-[#a6a9a2]" /></button> })}</div> : <button type="button" onClick={() => onCreate({ date: dateKey, time: "09:00" })} className="w-full rounded-xl border border-dashed border-[#d8d1c6] bg-[#faf8f4] px-4 py-4 text-left text-xs text-[#8b8d88] hover:border-[#c08a6d] hover:text-[#b65f3a]">No appointments scheduled. Add a note or appointment.</button>}</div> })}</div>}
+    </div>
+  )
+}
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 function NewAppointmentPanel({ matters, onClose, initialSlot }: { matters: Matter[]; onClose: () => void; initialSlot?: AppointmentSlot }) {
@@ -483,22 +605,30 @@ function DocumentDraftEditor({
   documentName,
   content,
   status,
+  visibility,
+  versions,
   saving,
   onChange,
   onClose,
   onApprove,
   onReopen,
   onSave,
+  onToggleVisibility,
+  onRestoreVersion,
 }: {
   documentName: string
   content: string
   status: "draft" | "final"
+  visibility: "internal" | "client"
+  versions: { id: string; versionNumber: number; content: string; status: "draft" | "final"; visibility: "internal" | "client"; createdAt: string }[]
   saving: boolean
   onChange: (content: string) => void
   onClose: () => void
   onApprove: () => void
   onReopen: () => void
   onSave: () => void
+  onToggleVisibility: () => void
+  onRestoreVersion: (versionId: string) => void
 }) {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-[#15212c]/35 p-4 backdrop-blur-[2px]">
@@ -507,7 +637,7 @@ function DocumentDraftEditor({
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#b65f3a]">Ready-made draft</p>
             <h2 className="mt-1 font-serif text-xl font-semibold text-[#23313d]">{documentName}</h2>
-            <p className="mt-1 text-xs text-[#737872]">Review and tailor this working copy before it is shared or sent.</p>
+            <div className="mt-2 flex flex-wrap items-center gap-2"><span className={cn("rounded-full px-2 py-1 text-[10px] font-bold", status === "final" ? "bg-emerald-50 text-emerald-700" : "bg-[#f1eee8] text-[#737872]")}>{status === "final" ? "Final" : "Draft"}</span><span className={cn("rounded-full px-2 py-1 text-[10px] font-bold", visibility === "client" ? "bg-[#f2e2d8] text-[#a24f31]" : "bg-slate-100 text-slate-600")}>{visibility === "client" ? "Client-visible" : "Internal only"}</span><span className="text-[10px] text-[#9b9d97]">{versions.length} version{versions.length === 1 ? "" : "s"}</span></div>
           </div>
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close draft editor"><X /></Button>
         </div>
@@ -521,12 +651,13 @@ function DocumentDraftEditor({
           />
           <div className="mt-3 flex gap-2 rounded-xl border border-[#e4ded5] bg-[#f8f5ef] p-3 text-xs leading-5 text-[#737872]">
             <ShieldCheck className="mt-0.5 size-4 shrink-0 text-[#b65f3a]" />
-            <span>This is a private, attorney-review draft. MatterPilot will not send or file it automatically.</span>
+            <span>{visibility === "client" ? "This final version is eligible for the secure client packet. MatterPilot will not send or file it automatically." : "This document is internal-only. It will stay out of client packets until an attorney marks a final version client-visible."}</span>
           </div>
+          {versions.length > 0 ? <div className="mt-4 rounded-xl border border-[#e4ded5] bg-white p-3"><div className="flex items-center gap-2"><History className="size-4 text-[#b65f3a]" /><p className="text-xs font-bold uppercase tracking-[0.14em] text-[#8b8d88]">Version history</p></div><div className="mt-3 space-y-2">{versions.slice(0, 8).map((version) => <div key={version.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-[#eeeae3] bg-[#fbfaf7] px-3 py-2 text-[11px]"><span className="font-semibold text-[#39443f]">v{version.versionNumber}</span><span className="text-[#8b8d88]">{new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(version.createdAt))}</span><span className={cn("rounded-full px-1.5 py-0.5 font-bold", version.visibility === "client" ? "bg-[#f2e2d8] text-[#a24f31]" : "bg-slate-100 text-slate-600")}>{version.visibility === "client" ? "Client-visible" : "Internal"}</span><span className="text-[#8b8d88]">{version.status === "final" ? "Final" : "Draft"}</span><Button size="sm" variant="ghost" onClick={() => onRestoreVersion(version.id)} disabled={saving} className="ml-auto px-2 text-[11px] text-[#b65f3a]">Restore</Button></div>)}</div></div> : null}
         </div>
         <div className="flex items-center justify-end gap-2 border-t border-[#e8e3da] px-5 py-4 sm:px-6">
           <Button variant="outline" onClick={onClose} disabled={saving}>Close</Button>
-          {status === "final" ? <Button variant="outline" onClick={onReopen} disabled={saving}>Reopen for editing</Button> : <><Button variant="outline" onClick={onSave} disabled={saving || !content.trim()}>Save draft</Button><Button onClick={onApprove} disabled={saving || !content.trim()} className="bg-[#23313d] hover:bg-[#18242e]">{saving ? "Approving…" : "Approve for client"} <Check /></Button></>}
+          {status === "final" ? <><Button variant="outline" onClick={onToggleVisibility} disabled={saving}>{visibility === "client" ? "Make internal" : "Make client-visible"}</Button><Button variant="outline" onClick={onReopen} disabled={saving}>Reopen for editing</Button></> : <><Button variant="outline" onClick={onSave} disabled={saving || !content.trim()}>Save draft</Button><Button onClick={onApprove} disabled={saving || !content.trim()} className="bg-[#23313d] hover:bg-[#18242e]">{saving ? "Approving…" : "Approve for client"} <Check /></Button></>}
         </div>
       </div>
     </div>
@@ -536,7 +667,7 @@ function DocumentDraftEditor({
 function AppointmentEmailComposer({ appointment, onClose, onSaved }: { appointment: Appointment; onClose: () => void; onSaved: () => void }) {
   const [recipient, setRecipient] = useState(appointment.clientEmail ?? "")
   const [subject, setSubject] = useState(`Follow-up: ${appointment.title}`)
-  const [body, setBody] = useState(() => `Hello ${appointment.client.split(" ")[0]},\n\nI’m following up about ${appointment.title} on ${WEEK[appointment.day].full} at ${formatTime(appointment.start)}.\n\nPlease reply here if you have any questions or updates before we meet.\n\nBest,\nHarbor Legal`)
+  const [body, setBody] = useState(() => `Hello ${appointment.client.split(" ")[0]},\n\nI’m following up about ${appointment.title} on ${appointmentDayLabel(appointment)} at ${appointmentTimeRange(appointment).split(" – ")[0]}.\n\nPlease reply here if you have any questions or updates before we meet.\n\nBest,\nHarbor Legal`)
   const [saving, setSaving] = useState("")
   const [error, setError] = useState("")
 
@@ -580,7 +711,7 @@ function AppointmentEmailComposer({ appointment, onClose, onSaved }: { appointme
 function AppointmentDetail({ appointment, onClose, onUpdated }: { appointment: Appointment; onClose: () => void; onUpdated: () => void }) {
   const [savingKey, setSavingKey] = useState("")
   const [error, setError] = useState("")
-  const [draftEditor, setDraftEditor] = useState<{ draftId: string; documentId: string; name: string; content: string; status: "draft" | "final" } | null>(null)
+  const [draftEditor, setDraftEditor] = useState<{ draftId: string; documentId: string; name: string; content: string; status: "draft" | "final"; visibility: "internal" | "client"; versions: NonNullable<Appointment["documents"][number]["versions"]> } | null>(null)
   const [emailComposer, setEmailComposer] = useState(false)
   const [packetUrl, setPacketUrl] = useState<string | null>(null)
   const participants = appointment.participantDetails ?? []
@@ -610,14 +741,14 @@ function AppointmentDetail({ appointment, onClose, onUpdated }: { appointment: A
       setError(result.error)
       return
     }
-    setDraftEditor({ draftId: result.draftId, documentId: document.id, name: document.label, content: result.content, status: "draft" })
+    setDraftEditor({ draftId: result.draftId, documentId: document.id, name: document.label, content: result.content, status: "draft", visibility: "internal", versions: [] })
   }
 
   async function saveDraft() {
     if (!draftEditor || !appointment.matterId) return
     setSavingKey("draft-save")
     setError("")
-    const result = await saveAppointmentDocumentDraftAction({ matterId: appointment.matterId, draftId: draftEditor.draftId, content: draftEditor.content })
+    const result = await saveAppointmentDocumentDraftAction({ matterId: appointment.matterId, draftId: draftEditor.draftId, content: draftEditor.content, visibility: draftEditor.visibility })
     setSavingKey("")
     if (!result.ok) {
       setError(result.error)
@@ -631,32 +762,60 @@ function AppointmentDetail({ appointment, onClose, onUpdated }: { appointment: A
     if (!draftEditor || !appointment.matterId) return
     setSavingKey("draft-approve")
     setError("")
-    const saved = await saveAppointmentDocumentDraftAction({ matterId: appointment.matterId, draftId: draftEditor.draftId, content: draftEditor.content })
+    const saved = await saveAppointmentDocumentDraftAction({ matterId: appointment.matterId, draftId: draftEditor.draftId, content: draftEditor.content, visibility: "client" })
     if (!saved.ok) {
       setSavingKey("")
       setError(saved.error)
       return
     }
-    const result = await updateAppointmentDocumentDraftStatusAction({ matterId: appointment.matterId, draftId: draftEditor.draftId, status: "final" })
+    const result = await updateAppointmentDocumentDraftStatusAction({ matterId: appointment.matterId, draftId: draftEditor.draftId, status: "final", visibility: "client" })
     setSavingKey("")
     if (!result.ok) {
       setError(result.error)
       return
     }
-    setDraftEditor((current) => current ? { ...current, status: "final" } : current)
+    setDraftEditor((current) => current ? { ...current, status: "final", visibility: "client" } : current)
   }
 
   async function reopenDraft() {
     if (!draftEditor || !appointment.matterId) return
     setSavingKey("draft-reopen")
     setError("")
-    const result = await updateAppointmentDocumentDraftStatusAction({ matterId: appointment.matterId, draftId: draftEditor.draftId, status: "draft" })
+    const result = await updateAppointmentDocumentDraftStatusAction({ matterId: appointment.matterId, draftId: draftEditor.draftId, status: "draft", visibility: "internal" })
     setSavingKey("")
     if (!result.ok) {
       setError(result.error)
       return
     }
-    setDraftEditor((current) => current ? { ...current, status: "draft" } : current)
+    setDraftEditor((current) => current ? { ...current, status: "draft", visibility: "internal" } : current)
+  }
+
+  async function toggleDraftVisibility() {
+    if (!draftEditor || !appointment.matterId) return
+    const visibility = draftEditor.visibility === "client" ? "internal" : "client"
+    setSavingKey("draft-visibility")
+    setError("")
+    const result = await updateAppointmentDocumentDraftVisibilityAction({ matterId: appointment.matterId, draftId: draftEditor.draftId, visibility })
+    setSavingKey("")
+    if (!result.ok) {
+      setError(result.error)
+      return
+    }
+    setDraftEditor((current) => current ? { ...current, visibility } : current)
+  }
+
+  async function restoreDraftVersion(versionId: string) {
+    if (!draftEditor || !appointment.matterId) return
+    setSavingKey("draft-restore")
+    setError("")
+    const result = await restoreAppointmentDocumentDraftVersionAction({ matterId: appointment.matterId, draftId: draftEditor.draftId, versionId })
+    setSavingKey("")
+    if (!result.ok) {
+      setError(result.error)
+      return
+    }
+    setDraftEditor(null)
+    onUpdated()
   }
 
   async function createPacket() {
@@ -690,20 +849,20 @@ function AppointmentDetail({ appointment, onClose, onUpdated }: { appointment: A
       <div className="flex h-full w-full max-w-lg flex-col overflow-auto bg-[#fbfaf7] shadow-2xl sm:h-auto sm:max-h-[calc(100vh-2rem)] sm:rounded-2xl">
         <div className="border-b border-[#e8e3da] px-5 py-5">
           <div className="flex items-start justify-between gap-4"><div><div className="flex items-center gap-2"><StatusPill status={appointment.readiness} /><span className="text-xs text-[#8b8d88]">{appointment.type}</span></div><h2 className="mt-3 font-serif text-2xl font-semibold tracking-[-0.02em] text-[#23313d]">{appointment.title}</h2><p className="mt-1 text-sm text-[#737872]">{appointment.client} · {appointment.matter}</p></div><Button variant="ghost" size="icon" onClick={onClose} aria-label="Close"><X /></Button></div>
-          <div className="mt-5 grid grid-cols-2 gap-2 text-xs text-[#5f665f]"><div className="rounded-lg bg-[#f1eee8] p-3"><Clock3 className="mb-2 size-4 text-[#b65f3a]" /><span className="block font-semibold">{WEEK[appointment.day].full}</span><span className="mt-0.5 block text-[#8b8d88]">{formatTime(appointment.start)} – {formatTime(appointment.end)}</span></div><div className="rounded-lg bg-[#f1eee8] p-3"><UsersRound className="mb-2 size-4 text-[#b65f3a]" /><span className="block font-semibold">{appointment.isNote ? "Personal note" : `${appointment.participants} participants`}</span><span className="mt-0.5 block text-[#8b8d88]">Owner: {appointment.owner}</span></div></div>
+          <div className="mt-5 grid grid-cols-2 gap-2 text-xs text-[#5f665f]"><div className="rounded-lg bg-[#f1eee8] p-3"><Clock3 className="mb-2 size-4 text-[#b65f3a]" /><span className="block font-semibold">{appointmentDayLabel(appointment)}</span><span className="mt-0.5 block text-[#8b8d88]">{appointmentTimeRange(appointment)}</span></div><div className="rounded-lg bg-[#f1eee8] p-3"><UsersRound className="mb-2 size-4 text-[#b65f3a]" /><span className="block font-semibold">{appointment.isNote ? "Personal note" : `${appointment.participants} participants`}</span><span className="mt-0.5 block text-[#8b8d88]">Owner: {appointment.owner}</span></div></div>
         </div>
         <div className="space-y-6 p-5">{appointment.notes ? <section className="rounded-xl border border-[#e4ded5] bg-[#f8f5ef] p-4"><h3 className="text-xs font-bold uppercase tracking-[0.15em] text-[#8b8d88]">{appointment.isNote ? "Note" : "Internal notes"}</h3><p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#4c5751]">{appointment.notes}</p></section> : null}
           {!appointment.isNote ? <section className="rounded-xl border border-[#e4ded5] bg-white p-4"><div className="flex items-center justify-between gap-3"><div><h3 className="text-xs font-bold uppercase tracking-[0.15em] text-[#8b8d88]">Conflict check</h3><p className="mt-1 text-xs text-[#737872]">A clear check is required before this appointment is ready.</p></div><span className={cn("rounded-full px-2 py-1 text-[10px] font-bold", appointment.conflictStatus === "clear" ? "bg-emerald-50 text-emerald-700" : appointment.conflictStatus === "issue" ? "bg-rose-50 text-rose-700" : "bg-amber-50 text-amber-700")}>{appointment.conflictStatus === "clear" ? "Clear" : appointment.conflictStatus === "issue" ? "Issue" : "Pending"}</span></div><Button size="sm" variant="outline" disabled={Boolean(savingKey)} onClick={() => runAction("conflict", () => updateAppointmentConflictAction({ matterId: appointment.matterId, appointmentId: appointment.id, conflictStatus: appointment.conflictStatus === "clear" ? "pending" : "clear" }))} className="mt-3 border-[#ded9d0] bg-[#fbfaf7]">{savingKey === "conflict" ? "Saving…" : appointment.conflictStatus === "clear" ? "Reopen check" : "Mark conflict clear"}</Button></section> : null}
           {hasClientPacketDocuments ? <section className="rounded-xl border border-[#d8c7bb] bg-[#fffaf6] p-4"><div className="flex items-start gap-3"><span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#f2e2d8] text-[#a24f31]"><ShieldCheck className="size-4" /></span><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-3"><div><h3 className="text-xs font-bold uppercase tracking-[0.15em] text-[#8b604c]">Client preparation packet</h3><p className="mt-1 text-xs leading-5 text-[#737872]">Track the client’s packet without exposing the private link again.</p></div><span className={cn("shrink-0 rounded-full px-2 py-1 text-[10px] font-bold", packetStatusClass)}>{packetStatusLabel}</span></div>{appointment.packet?.viewedAt || appointment.packet?.completedAt ? <p className="mt-3 text-[11px] text-[#737872]">{appointment.packet.completedAt ? `Completed ${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(appointment.packet.completedAt))}` : `Viewed ${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(appointment.packet.viewedAt!))}`}</p> : null}{appointment.packet?.reminders.length ? <div className="mt-3 space-y-1.5 border-t border-[#eadbd0] pt-3"><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9b765f]">Reminder schedule</p>{appointment.packet.reminders.map((reminder) => <div key={reminder.id} className="flex items-center justify-between gap-2 text-[11px] text-[#737872]"><span>{reminder.kind === "first_reminder" ? "First reminder" : "Final reminder"}</span><span className={cn(reminder.status === "planned" ? "text-[#a24f31]" : "text-[#8b8d88]")}>{reminder.status === "cancelled" ? "Cancelled" : reminder.status === "sent" ? "Sent" : `Planned · ${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(reminder.sendAt))}`}</span></div>)}</div> : null}{packetUrl ? <div className="mt-3 flex flex-wrap items-center gap-2"><a href={packetUrl} target="_blank" rel="noreferrer" className="max-w-full truncate rounded-lg border border-[#e2cfc1] bg-white px-3 py-2 text-xs font-semibold text-[#a24f31] hover:underline">{packetUrl}</a><Button size="sm" variant="outline" onClick={async () => { await navigator.clipboard.writeText(`${window.location.origin}${packetUrl}`) }} className="border-[#d8c1b4] bg-white px-2 text-[11px] text-[#a24f31]">Copy link</Button><Button size="sm" variant="ghost" disabled={Boolean(savingKey)} onClick={revokePacket} className="px-2 text-[11px] text-[#8b604c]">{savingKey === "packet-revoke" ? "Revoking…" : "Revoke link"}</Button></div> : <div className="mt-3 flex flex-wrap items-center gap-2"><Button size="sm" variant="outline" disabled={Boolean(savingKey)} onClick={createPacket} className="border-[#d8c1b4] bg-white px-2 text-[11px] text-[#a24f31]">{savingKey === "packet" ? "Preparing link…" : appointment.packet?.status === "active" ? "Generate replacement link" : "Create secure link"}</Button>{appointment.packet?.status === "active" ? <span className="text-[11px] text-[#9b765f]">The current link is hidden for safety.</span> : null}</div>}</div></div></section> : null}
           <section><div className="flex items-center justify-between"><h3 className="text-xs font-bold uppercase tracking-[0.15em] text-[#8b8d88]">Preparation tasks</h3><span className="text-xs text-[#8b8d88]">{appointment.checklist.filter((item) => item.done).length}/{appointment.checklist.length} complete</span></div><div className="mt-3 space-y-2">{appointment.checklist.map((item) => <div key={item.id ?? item.label} className="flex items-center gap-3 rounded-lg border border-[#e8e3da] bg-white px-3 py-2.5 text-sm text-[#39443f]"><span className={cn("flex size-5 shrink-0 items-center justify-center rounded-full border", item.done ? "border-emerald-500 bg-emerald-500 text-white" : "border-[#d5d0c8] text-transparent")}><Check className="size-3" /></span><span className="min-w-0 flex-1"><span className="block">{item.label}</span>{item.isBlocking ? <span className="mt-0.5 block text-[10px] uppercase tracking-[0.12em] text-[#9b9d97]">Blocking</span> : null}</span>{item.id && appointment.matterId ? <Button size="sm" variant="ghost" disabled={Boolean(savingKey)} onClick={() => runAction(`task-${item.id}`, () => updateAppointmentTaskAction({ matterId: appointment.matterId, taskId: item.id!, status: item.done ? "open" : "done" }))} className="shrink-0 px-2 text-[11px] text-[#b65f3a]">{savingKey === `task-${item.id}` ? "Saving…" : item.done ? "Reopen" : "Mark done"}</Button> : null}</div>)}</div></section>
-          {!appointment.isNote ? <section><div className="flex items-center justify-between"><h3 className="text-xs font-bold uppercase tracking-[0.15em] text-[#8b8d88]">Documents</h3><button type="button" className="text-xs font-semibold text-[#b65f3a] hover:underline">Request more</button></div><div className="mt-3 space-y-2">{appointment.documents.map((doc) => <div key={doc.id ?? doc.label} className="flex flex-wrap items-center gap-3 rounded-lg border border-[#e8e3da] bg-white px-3 py-2.5 text-sm"><span className="flex min-w-0 flex-1 items-center gap-2 text-[#39443f]"><FileText className="size-4 shrink-0 text-[#9b9c95]" /><span className="truncate">{doc.label}</span></span><span className={cn("text-[11px] font-semibold", doc.draftStatus === "final" ? "text-emerald-700" : doc.draftId ? "text-[#b65f3a]" : doc.status === "ready" ? "text-emerald-700" : doc.status === "missing" ? "text-rose-700" : "text-amber-700")}>{doc.draftStatus === "final" ? "Approved" : doc.draftId ? "Draft ready" : doc.sourceStatus === "waived" ? "Waived" : doc.sourceStatus === "signed" ? "Signed" : doc.status === "ready" ? "Received" : doc.status === "missing" ? "Missing" : "Requested"}</span>{doc.templateKey && doc.id && appointment.matterId ? <Button size="sm" variant="outline" disabled={Boolean(savingKey)} onClick={() => doc.draftId ? setDraftEditor({ draftId: doc.draftId!, documentId: doc.id!, name: doc.label, content: doc.draftContent ?? "", status: doc.draftStatus ?? "draft" }) : createDraft(doc)} className="shrink-0 border-[#d8c1b4] bg-[#fffaf6] px-2 text-[11px] text-[#a24f31]">{savingKey === `draft-${doc.id}` ? "Preparing…" : doc.draftId ? "Open draft" : "Create draft"}</Button> : null}{doc.id && appointment.matterId ? <Button size="sm" variant="ghost" disabled={Boolean(savingKey)} onClick={() => runAction(`document-${doc.id}`, () => updateAppointmentDocumentAction({ matterId: appointment.matterId, documentId: doc.id!, status: doc.sourceStatus === "requested" ? "received" : doc.sourceStatus === "signed" ? "requested" : "requested" }))} className="shrink-0 px-2 text-[11px] text-[#b65f3a]">{savingKey === `document-${doc.id}` ? "Saving…" : doc.sourceStatus === "requested" ? "Mark received" : "Reopen"}</Button> : null}{doc.id && appointment.matterId && doc.sourceStatus === "requested" ? <Button size="sm" variant="ghost" disabled={Boolean(savingKey)} onClick={() => runAction(`waive-${doc.id}`, () => updateAppointmentDocumentAction({ matterId: appointment.matterId, documentId: doc.id!, status: "waived" }))} className="shrink-0 px-2 text-[11px] text-[#737872]">Waive</Button> : null}</div>)}</div></section> : null}
+          {!appointment.isNote ? <section><div className="flex items-center justify-between"><h3 className="text-xs font-bold uppercase tracking-[0.15em] text-[#8b8d88]">Documents</h3><button type="button" className="text-xs font-semibold text-[#b65f3a] hover:underline">Request more</button></div><div className="mt-3 space-y-2">{appointment.documents.map((doc) => <div key={doc.id ?? doc.label} className="flex flex-wrap items-center gap-3 rounded-lg border border-[#e8e3da] bg-white px-3 py-2.5 text-sm"><span className="flex min-w-0 flex-1 items-center gap-2 text-[#39443f]"><FileText className="size-4 shrink-0 text-[#9b9c95]" /><span className="truncate">{doc.label}</span></span><span className={cn("text-[11px] font-semibold", doc.draftStatus === "final" ? "text-emerald-700" : doc.draftId ? "text-[#b65f3a]" : doc.status === "ready" ? "text-emerald-700" : doc.status === "missing" ? "text-rose-700" : "text-amber-700")}>{doc.draftStatus === "final" ? "Approved" : doc.draftId ? "Draft ready" : doc.sourceStatus === "waived" ? "Waived" : doc.sourceStatus === "signed" ? "Signed" : doc.status === "ready" ? "Received" : doc.status === "missing" ? "Missing" : "Requested"}</span>{doc.draftId && doc.draftVisibility ? <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-bold", doc.draftVisibility === "client" ? "bg-[#f2e2d8] text-[#a24f31]" : "bg-slate-100 text-slate-600")}>{doc.draftVisibility === "client" ? "Client-visible" : "Internal"}</span> : null}{doc.templateKey && doc.id && appointment.matterId ? <Button size="sm" variant="outline" disabled={Boolean(savingKey)} onClick={() => doc.draftId ? setDraftEditor({ draftId: doc.draftId!, documentId: doc.id!, name: doc.label, content: doc.draftContent ?? "", status: doc.draftStatus ?? "draft", visibility: doc.draftVisibility ?? "internal", versions: doc.versions ?? [] }) : createDraft(doc)} className="shrink-0 border-[#d8c1b4] bg-[#fffaf6] px-2 text-[11px] text-[#a24f31]">{savingKey === `draft-${doc.id}` ? "Preparing…" : doc.draftId ? "Open draft" : "Create draft"}</Button> : null}{doc.id && appointment.matterId ? <Button size="sm" variant="ghost" disabled={Boolean(savingKey)} onClick={() => runAction(`document-${doc.id}`, () => updateAppointmentDocumentAction({ matterId: appointment.matterId, documentId: doc.id!, status: doc.sourceStatus === "requested" ? "received" : doc.sourceStatus === "signed" ? "requested" : "requested" }))} className="shrink-0 px-2 text-[11px] text-[#b65f3a]">{savingKey === `document-${doc.id}` ? "Saving…" : doc.sourceStatus === "requested" ? "Mark received" : "Reopen"}</Button> : null}{doc.id && appointment.matterId && doc.sourceStatus === "requested" ? <Button size="sm" variant="ghost" disabled={Boolean(savingKey)} onClick={() => runAction(`waive-${doc.id}`, () => updateAppointmentDocumentAction({ matterId: appointment.matterId, documentId: doc.id!, status: "waived" }))} className="shrink-0 px-2 text-[11px] text-[#737872]">Waive</Button> : null}</div>)}</div></section> : null}
           {!appointment.isNote && participants.length ? <section><h3 className="text-xs font-bold uppercase tracking-[0.15em] text-[#8b8d88]">Participants</h3><div className="mt-3 space-y-2">{participants.map((participant) => <div key={participant.id} className="flex items-center gap-3 rounded-lg border border-[#e8e3da] bg-white px-3 py-2.5 text-sm"><span className="min-w-0 flex-1 truncate text-[#39443f]">{participant.displayName}{participant.isRequired ? <span className="ml-1 text-[10px] text-[#9b9d97]">required</span> : null}</span><span className={cn("text-[11px] font-semibold", participant.responseStatus === "confirmed" ? "text-emerald-700" : participant.responseStatus === "declined" ? "text-rose-700" : "text-amber-700")}>{participant.responseStatus === "confirmed" ? "Confirmed" : participant.responseStatus === "declined" ? "Declined" : "Pending"}</span><Button size="sm" variant="ghost" disabled={Boolean(savingKey)} onClick={() => runAction(`participant-${participant.id}`, () => updateAppointmentParticipantAction({ matterId: appointment.matterId, participantId: participant.id, responseStatus: participant.responseStatus === "confirmed" ? "pending" : "confirmed" }))} className="shrink-0 px-2 text-[11px] text-[#b65f3a]">{savingKey === `participant-${participant.id}` ? "Saving…" : participant.responseStatus === "confirmed" ? "Reopen" : "Confirm"}</Button></div>)}</div></section> : null}
           {error ? <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{error}</p> : null}
           <section><div className="flex items-center justify-between gap-3"><div><h3 className="text-xs font-bold uppercase tracking-[0.15em] text-[#8b8d88]">Client communication</h3><p className="mt-1 text-xs text-[#737872]">A single record of every message prepared for this appointment.</p></div><span className="rounded-full bg-[#f1eee8] px-2 py-1 text-[10px] font-bold text-[#737872]">{appointment.communications?.length ?? 0} messages</span></div><div className="mt-3 space-y-2">{appointment.communications?.length ? appointment.communications.slice(0, 4).map((communication) => <div key={communication.id} className="rounded-lg border border-[#e8e3da] bg-white px-3 py-2.5"><div className="flex items-center gap-2"><Mail className="size-3.5 text-[#b65f3a]" /><span className="min-w-0 flex-1 truncate text-xs font-semibold text-[#39443f]">{communication.subject || "Untitled email"}</span><span className={cn("text-[10px] font-bold", communication.status === "sent" ? "text-emerald-700" : communication.status === "failed" ? "text-rose-700" : communication.status === "queued" ? "text-amber-700" : "text-[#8b8d88]")}>{communication.status === "queued" ? "Queued" : communication.status === "sent" ? "Sent" : communication.status === "failed" ? "Failed" : communication.status === "cancelled" ? "Cancelled" : "Draft"}</span></div><p className="mt-1 line-clamp-2 text-[11px] leading-5 text-[#737872]">{communication.body.replace(/\s+/g, " ").trim()}</p><p className="mt-1 text-[10px] text-[#a1a39d]">{new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(communication.createdAt))}{communication.recipient ? ` · ${communication.recipient}` : ""}</p></div>) : <div className="rounded-lg border border-dashed border-[#d9d3c9] bg-[#fbfaf7] px-3 py-3 text-xs leading-5 text-[#8b8d88]">No messages yet. Start with a prepared follow-up or client packet note.</div>}</div><div className="mt-3 grid grid-cols-2 gap-2"><button type="button" onClick={() => setEmailComposer(true)} className="flex items-center justify-center gap-2 rounded-lg border border-[#e1dbd1] bg-white px-3 py-2.5 text-xs font-semibold text-[#4d5851] hover:border-[#b65f3a]"><Mail className="size-3.5" /> Email client</button><button type="button" disabled className="flex items-center justify-center gap-2 rounded-lg border border-[#e8e3da] bg-[#f1eee8] px-3 py-2.5 text-xs font-semibold text-[#a1a39d]"><MessageSquareText className="size-3.5" /> Text later</button></div><p className="mt-2 text-xs text-[#8b8d88]">Email messages can be saved as drafts or queued for provider delivery. SMS is planned next.</p></section>
           <div className="flex items-center gap-2 border-t border-[#e8e3da] pt-4"><Button variant="outline" className="flex-1">Move appointment</Button><Button className="flex-1 bg-[#23313d] hover:bg-[#18242e]" onClick={appointment.isNote ? onClose : undefined}>{appointment.isNote ? "Close note" : "Open matter"} <ArrowUpRight /></Button></div>
         </div>
       </div>
-      {draftEditor ? <DocumentDraftEditor documentName={draftEditor.name} content={draftEditor.content} status={draftEditor.status} saving={savingKey.startsWith("draft-")} onChange={(content) => setDraftEditor((current) => current ? { ...current, content } : current)} onClose={() => setDraftEditor(null)} onApprove={approveDraft} onReopen={reopenDraft} onSave={saveDraft} /> : null}
+      {draftEditor ? <DocumentDraftEditor documentName={draftEditor.name} content={draftEditor.content} status={draftEditor.status} visibility={draftEditor.visibility} versions={draftEditor.versions} saving={savingKey.startsWith("draft-")} onChange={(content) => setDraftEditor((current) => current ? { ...current, content } : current)} onClose={() => setDraftEditor(null)} onApprove={approveDraft} onReopen={reopenDraft} onSave={saveDraft} onToggleVisibility={toggleDraftVisibility} onRestoreVersion={restoreDraftVersion} /> : null}
       {emailComposer ? <AppointmentEmailComposer appointment={appointment} onClose={() => setEmailComposer(false)} onSaved={() => { setEmailComposer(false); onUpdated() }} /> : null}
     </div>
   )
@@ -849,7 +1008,7 @@ function ContactCenter({ matters, contacts }: { matters: Matter[]; contacts: Das
   return <section id="contacts" className="rounded-2xl border border-[#ded9d0] bg-[#fbfaf7] shadow-sm"><div className="flex flex-col gap-4 border-b border-[#e8e3da] px-5 py-5 sm:px-6"><div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><div className="flex items-center gap-2"><ContactRound className="size-4 text-[#b65f3a]" /><h2 className="font-serif text-xl font-semibold text-[#23313d]">Client & contact command center</h2><span className="rounded-full bg-[#f1eee8] px-2 py-0.5 text-[10px] font-bold text-[#777b76]">Matter-aware</span></div><p className="mt-1 max-w-xl text-xs leading-5 text-[#8b8d88]">A clean view of the people who shape the work—clients, witnesses, experts, and opposing counsel.</p></div><Button size="sm" onClick={() => setShowComposer(true)} className="bg-[#b65f3a] hover:bg-[#9f5030]"><Plus /> Add contact</Button></div><div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_180px_auto] sm:items-center"><div className="flex items-center gap-2 rounded-lg border border-[#ded9d0] bg-white px-3 py-2"><Search className="size-3.5 text-[#9b9d97]" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search people or matters" className="w-full bg-transparent text-xs text-[#39443f] outline-none placeholder:text-[#a1a39d]" /></div><select value={filter} onChange={(event) => setFilter(event.target.value as "all" | DashboardContact["role"])} className="h-9 rounded-lg border border-[#ded9d0] bg-white px-3 text-xs text-[#39443f] outline-none focus:border-[#b65f3a]"><option value="all">All roles</option><option value="client">Clients</option><option value="prospective_client">Prospective clients</option><option value="witness">Witnesses</option><option value="expert">Experts</option><option value="opposing_counsel">Opposing counsel</option><option value="other">Other</option></select><div className="flex gap-2 text-[11px] font-semibold"><span className="rounded-full bg-[#e8eef0] px-2.5 py-1 text-[#385367]">{activeContacts.length} active</span><span className="rounded-full bg-[#f1eee8] px-2.5 py-1 text-[#737872]">{contacts.length - activeContacts.length} archived</span></div></div></div><div className="p-5 sm:p-6">{error ? <p className="mb-4 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{error}</p> : null}{filteredContacts.length ? <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{filteredContacts.map((contact) => <article key={contact.id} className={cn("rounded-xl border bg-white p-4", contact.status === "archived" ? "border-[#e8e3da] opacity-65" : "border-[#e2d7cd]")}><div className="flex items-start gap-3"><span className={cn("flex size-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold", contact.role === "client" ? "bg-[#f4e5db] text-[#955033]" : "bg-[#e8eef0] text-[#385367]")}><ContactRound className="size-5" /></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-[#39443f]">{contact.name}</p><p className="mt-0.5 truncate text-[11px] text-[#8b8d88]">{roleLabel(contact.role)} · {contact.matter}</p></div></div><div className="mt-4 space-y-1 text-xs text-[#626b64]">{contact.email ? <a href={`mailto:${contact.email}`} className="block truncate text-[#a24f31] hover:underline">{contact.email}</a> : <p className="text-[#a1a39d]">No email recorded</p>}{contact.phone ? <a href={`tel:${contact.phone}`} className="block text-[#626b64]">{contact.phone}</a> : null}</div>{contact.notes ? <p className="mt-3 line-clamp-2 text-xs leading-5 text-[#737872]">{contact.notes}</p> : null}<div className="mt-4 flex items-center justify-between border-t border-[#eee9e2] pt-3 text-[10px] text-[#8b8d88]"><span>{contact.appointmentCount} appointments · {contact.openDeadlineCount} open deadlines</span><Button size="sm" variant="ghost" disabled={savingId === contact.id} onClick={() => toggle(contact)} className="px-1.5 text-[10px] text-[#b65f3a]">{savingId === contact.id ? "Saving…" : contact.status === "active" ? "Archive" : "Reactivate"}</Button></div></article>)}</div> : <div className="rounded-xl border border-dashed border-[#d9d3c9] bg-[#fbfaf7] px-5 py-8 text-center"><ContactRound className="mx-auto size-6 text-[#c8b6a8]" /><p className="mt-3 text-sm font-semibold text-[#4d5851]">No contacts match this view.</p><p className="mx-auto mt-1 max-w-md text-xs leading-5 text-[#8b8d88]">Add a client, witness, expert, or opposing counsel to give every matter a human context.</p></div>}</div>{showComposer ? <ContactComposer matters={matters} onClose={() => setShowComposer(false)} onSaved={() => { setShowComposer(false); router.refresh() }} /> : null}</section>
 }
 
-function PortalCenter({ appointments, onSelect, onCreate }: { appointments: Appointment[]; onSelect: (appointment: Appointment) => void; onCreate: () => void }) {
+function PacketCenter({ appointments, onSelect, onCreate }: { appointments: Appointment[]; onSelect: (appointment: Appointment) => void; onCreate: () => void }) {
   const router = useRouter()
   const [savingKey, setSavingKey] = useState("")
   const [error, setError] = useState("")
@@ -901,6 +1060,40 @@ function PortalCenter({ appointments, onSelect, onCreate }: { appointments: Appo
   return <section id="portal" className="rounded-2xl border border-[#d8c7bb] bg-[#fffaf6] shadow-sm"><div className="flex flex-col gap-4 border-b border-[#eadbd0] px-5 py-5 sm:px-6"><div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><div className="flex items-center gap-2"><LockKeyhole className="size-4 text-[#a24f31]" /><h2 className="font-serif text-xl font-semibold text-[#23313d]">Client portal & document center</h2><span className="rounded-full bg-[#f2e2d8] px-2 py-0.5 text-[10px] font-bold text-[#8b604c]">Secure packet links</span></div><p className="mt-1 max-w-xl text-xs leading-5 text-[#8b6f60]">Approve the client-facing documents, share one private preparation link, and see when the client has opened or completed it.</p></div><div className="flex items-center gap-2 text-[11px] font-semibold text-[#8b604c]"><span className="rounded-full bg-white px-2.5 py-1">{portalAppointments.length} client workflows</span><span className="rounded-full bg-white px-2.5 py-1">{portalAppointments.filter((appointment) => appointment.packet?.status === "completed").length} complete</span></div></div></div><div className="p-5 sm:p-6">{error ? <p className="mb-4 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{error}</p> : null}{portalAppointments.length ? <div className="grid gap-3 lg:grid-cols-2">{portalAppointments.map((appointment) => { const clientDocs = appointment.documents.filter((document) => document.label === "Intake questionnaire" || document.label === "Engagement letter"); const approvedCount = clientDocs.filter((document) => document.draftStatus === "final").length; const link = links[appointment.id]; const label = packetLabel(appointment); const statusClass = label === "Completed" ? "bg-emerald-50 text-emerald-700" : label === "Viewed" ? "bg-sky-50 text-sky-700" : label === "Shared" ? "bg-amber-50 text-amber-700" : "bg-[#f1eee8] text-[#737872]"; return <article key={appointment.id} className="rounded-xl border border-[#eadbd0] bg-white p-4"><div className="flex items-start gap-3"><span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#f2e2d8] text-[#a24f31]"><LockKeyhole className="size-5" /></span><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div><p className="truncate text-sm font-semibold text-[#39443f]">{appointment.client}</p><p className="mt-0.5 truncate text-[11px] text-[#8b8d88]">{appointment.matter} · {appointment.title}</p></div><span className={cn("shrink-0 rounded-full px-2 py-1 text-[10px] font-bold", statusClass)}>{label}</span></div></div></div><div className="mt-4 grid grid-cols-2 gap-2 text-[11px]"><div className="rounded-lg bg-[#fffaf6] p-3"><span className="block font-bold uppercase tracking-[0.12em] text-[#9b765f]">Documents</span><span className="mt-1 block font-semibold text-[#5e655f]">{approvedCount}/{clientDocs.length} approved</span></div><div className="rounded-lg bg-[#fffaf6] p-3"><span className="block font-bold uppercase tracking-[0.12em] text-[#9b765f]">Access</span><span className="mt-1 block font-semibold text-[#5e655f]">{appointment.packet?.completedAt ? "Submitted" : appointment.packet?.viewedAt ? "Opened" : "Not opened"}</span></div></div>{link ? <div className="mt-3 flex flex-wrap items-center gap-2"><a href={link} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate rounded-lg border border-[#e2cfc1] bg-[#fffaf6] px-3 py-2 text-xs font-semibold text-[#a24f31] hover:underline">{link}</a><Button size="sm" variant="outline" onClick={async () => { await navigator.clipboard.writeText(`${window.location.origin}${link}`) }} className="border-[#d8c1b4] px-2 text-[11px] text-[#a24f31]">Copy</Button></div> : null}<div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[#f0e5dd] pt-3">{approvedCount === clientDocs.length && clientDocs.length > 0 ? <Button size="sm" disabled={Boolean(savingKey)} onClick={() => createLink(appointment)} className="bg-[#a24f31] hover:bg-[#8f432a]">{savingKey === `create-${appointment.id}` ? "Preparing…" : appointment.packet?.status === "active" ? "Replace secure link" : "Create secure link"}<ArrowUpRight /></Button> : <Button size="sm" variant="outline" onClick={() => onSelect(appointment)} className="border-[#d8c1b4] text-[#a24f31]">Approve documents <ArrowUpRight /></Button>}{appointment.packet?.status === "active" ? <Button size="sm" variant="ghost" disabled={Boolean(savingKey)} onClick={() => revokeLink(appointment)} className="text-[11px] text-[#8b604c]">{savingKey === `revoke-${appointment.id}` ? "Revoking…" : "Revoke"}</Button> : null}<Button size="sm" variant="ghost" onClick={() => onSelect(appointment)} className="ml-auto text-[11px] text-[#737872]">Open workflow</Button></div></article> })}</div> : <div className="rounded-xl border border-dashed border-[#d9c5b7] bg-white/70 px-5 py-8 text-center"><LockKeyhole className="mx-auto size-6 text-[#c8a897]" /><p className="mt-3 text-sm font-semibold text-[#4d5851]">No client portal workflows yet.</p><p className="mx-auto mt-1 max-w-md text-xs leading-5 text-[#8b8d88]">Create an initial consultation or client appointment to generate a ready-made intake questionnaire and engagement-letter workflow.</p><Button size="sm" onClick={onCreate} className="mt-4 bg-[#a24f31] hover:bg-[#8f432a]">Start client workflow <Plus /></Button></div>}<p className="mt-4 text-[11px] leading-5 text-[#9b765f]">Client links use the existing one-time preparation packet: they expire automatically, can be revoked, and only show approved intake documents.</p></div></section>
 }
 
+function PortalCenter({ appointments, onSelect }: { appointments: Appointment[]; onSelect: (appointment: Appointment) => void }) {
+  const router = useRouter()
+  const [savingKey, setSavingKey] = useState("")
+  const [error, setError] = useState("")
+  const portalAppointments = appointments.filter((appointment) => !appointment.isNote && (appointment.clientEmail || appointment.documents.some((document) => document.label === "Intake questionnaire" || document.label === "Engagement letter")))
+  const activeCount = portalAppointments.filter((appointment) => appointment.portalAccess?.status === "active").length
+
+  async function enable(appointment: Appointment) {
+    setSavingKey(`enable-${appointment.id}`)
+    setError("")
+    const result = await enableClientPortalAccessAction({ matterId: appointment.matterId, appointmentId: appointment.id })
+    setSavingKey("")
+    if (!result.ok) {
+      setError(result.error)
+      return
+    }
+    router.refresh()
+  }
+
+  async function revoke(appointment: Appointment) {
+    setSavingKey(`revoke-${appointment.id}`)
+    setError("")
+    const result = await revokeClientPortalAccessAction({ matterId: appointment.matterId, appointmentId: appointment.id })
+    setSavingKey("")
+    if (!result.ok) {
+      setError(result.error)
+      return
+    }
+    router.refresh()
+  }
+
+  return <section id="verified-portal" className="rounded-2xl border border-[#c8d8dc] bg-[#f7fbfc] shadow-sm"><div className="flex flex-col gap-4 border-b border-[#dce8ea] px-5 py-5 sm:flex-row sm:items-end sm:justify-between sm:px-6"><div><div className="flex items-center gap-2"><ShieldCheck className="size-4 text-[#385367]" /><h2 className="font-serif text-xl font-semibold text-[#23313d]">Verified client portal</h2><span className="rounded-full bg-[#e8eef0] px-2 py-0.5 text-[10px] font-bold text-[#385367]">Email OTP</span></div><p className="mt-1 max-w-xl text-xs leading-5 text-[#63747a]">Give a verified client access to approved matter information. No portal data is shown until the client confirms their email.</p></div><div className="flex items-center gap-2 text-[11px] font-semibold text-[#385367]"><span className="rounded-full bg-white px-2.5 py-1">{portalAppointments.length} eligible</span><span className="rounded-full bg-white px-2.5 py-1">{activeCount} active</span></div></div><div className="p-5 sm:p-6">{error ? <p className="mb-4 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{error}</p> : null}{portalAppointments.length ? <div className="grid gap-3 lg:grid-cols-2">{portalAppointments.map((appointment) => { const active = appointment.portalAccess?.status === "active"; return <article key={appointment.id} className="rounded-xl border border-[#dce8ea] bg-white p-4"><div className="flex items-start gap-3"><span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#e8eef0] text-[#385367]"><ShieldCheck className="size-5" /></span><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div><p className="truncate text-sm font-semibold text-[#39443f]">{appointment.client}</p><p className="mt-0.5 truncate text-[11px] text-[#8b8d88]">{appointment.matter} · {appointment.clientEmail || "Email needed"}</p></div><span className={cn("shrink-0 rounded-full px-2 py-1 text-[10px] font-bold", active ? "bg-emerald-50 text-emerald-700" : appointment.portalAccess?.status === "revoked" ? "bg-rose-50 text-rose-700" : "bg-[#f1eee8] text-[#737872]")}>{active ? "Active" : appointment.portalAccess?.status === "revoked" ? "Revoked" : "Not enabled"}</span></div></div></div><div className="mt-4 rounded-lg bg-[#f7fbfc] p-3 text-xs text-[#63747a]"><span className="font-bold uppercase tracking-[0.12em] text-[#78909a]">Client access</span><p className="mt-1">{appointment.portalAccess?.lastAccessedAt ? `Last opened ${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(appointment.portalAccess.lastAccessedAt))}` : active ? "Ready for the client to verify by email." : "No verified access is active."}</p></div><div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[#edf2f3] pt-3"><a href="/portal" target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#385367] hover:underline">Open client portal</a>{appointment.clientEmail ? active ? <Button size="sm" variant="ghost" disabled={Boolean(savingKey)} onClick={() => revoke(appointment)} className="ml-auto text-[11px] text-[#737872]">{savingKey === `revoke-${appointment.id}` ? "Revoking…" : "Revoke access"}</Button> : <Button size="sm" disabled={Boolean(savingKey)} onClick={() => enable(appointment)} className="ml-auto bg-[#385367] hover:bg-[#294351]">{savingKey === `enable-${appointment.id}` ? "Enabling…" : "Enable verified access"}<ShieldCheck /></Button> : <Button size="sm" variant="outline" onClick={() => onSelect(appointment)} className="ml-auto border-[#c8d8dc] text-[#385367]">Add client email <ArrowUpRight /></Button>}</div></article> })}</div> : <div className="rounded-xl border border-dashed border-[#c8d8dc] bg-white/70 px-5 py-8 text-center"><ShieldCheck className="mx-auto size-6 text-[#9bb2ba]" /><p className="mt-3 text-sm font-semibold text-[#4d5851]">No verified portal access yet.</p><p className="mx-auto mt-1 max-w-md text-xs leading-5 text-[#63747a]">Add a client email to an appointment, then enable access here. The client can sign in at the portal using a one-time email code.</p></div>}<p className="mt-4 text-[11px] leading-5 text-[#78909a]">Access is matter-scoped and revocable. The portal displays only attorney-approved client-visible documents and matching appointment details.</p></div></section>
+}
+
 export function MatterPilotDashboard({ matters, initialAppointments = [], initialCommunications = [], initialDeadlines = [], initialContacts = [], userName = "Maya" }: { matters: Matter[]; initialAppointments?: Appointment[]; initialCommunications?: DashboardCommunication[]; initialDeadlines?: DashboardDeadline[]; initialContacts?: DashboardContact[]; userName?: string }) {
 
   const [showNew, setShowNew] = useState(false)
@@ -950,7 +1143,7 @@ export function MatterPilotDashboard({ matters, initialAppointments = [], initia
             <section className="grid gap-3 sm:grid-cols-3"><div className="rounded-xl border border-[#ded9d0] bg-[#fbfaf7] p-4"><div className="flex items-center justify-between"><span className="flex items-center gap-2 text-xs font-semibold text-[#5c665f]"><span className="size-2 rounded-full bg-emerald-500" /> Ready</span><CheckCircle2 className="size-4 text-emerald-600" /></div><p className="mt-3 text-2xl font-semibold text-[#23313d]">{appointments.filter((a) => a.readiness === "ready").length}</p><p className="mt-1 text-xs text-[#8b8d88]">Fully prepared events</p></div><div className="rounded-xl border border-[#ded9d0] bg-[#fbfaf7] p-4"><div className="flex items-center justify-between"><span className="flex items-center gap-2 text-xs font-semibold text-[#5c665f]"><span className="size-2 rounded-full bg-amber-500" /> At risk</span><AlarmClock className="size-4 text-amber-600" /></div><p className="mt-3 text-2xl font-semibold text-[#23313d]">{atRisk}</p><p className="mt-1 text-xs text-[#8b8d88]">Missing a preparation step</p></div><div className="rounded-xl border border-[#ded9d0] bg-[#fbfaf7] p-4"><div className="flex items-center justify-between"><span className="flex items-center gap-2 text-xs font-semibold text-[#5c665f]"><span className="size-2 rounded-full bg-rose-500" /> Blocked</span><ShieldCheck className="size-4 text-rose-600" /></div><p className="mt-3 text-2xl font-semibold text-[#23313d]">{blocked}</p><p className="mt-1 text-xs text-[#8b8d88]">Needs owner attention</p></div></section>
 
             <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-              <div id="calendar" className="min-w-0 rounded-2xl border border-[#ded9d0] bg-[#fbfaf7] shadow-sm"><div className="flex flex-col gap-4 border-b border-[#e8e3da] px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><div><div className="flex items-center gap-2"><h2 className="font-serif text-xl font-semibold text-[#23313d]">Calendar</h2><span className="rounded-full bg-[#eeeae3] px-2 py-0.5 text-[10px] font-bold text-[#777b76]">This week</span></div><p className="mt-1 text-xs text-[#8b8d88]">September 21 – 25, 2026 · Harbor Legal</p></div><div className="flex items-center gap-1"><button type="button" className="rounded-lg p-2 text-[#69736d] hover:bg-[#eeeae3]" aria-label="Previous week"><ChevronLeft className="size-4" /></button><button type="button" className="rounded-lg p-2 text-[#69736d] hover:bg-[#eeeae3]" aria-label="Next week"><ChevronRight className="size-4" /></button><Button variant="outline" size="sm" className="ml-1 border-[#ded9d0] bg-white"><Filter className="size-3.5" /> Filters</Button></div></div><div className="overflow-x-auto"><div className="min-w-[760px]"><div className="grid grid-cols-[58px_repeat(5,minmax(130px,1fr))] border-b border-[#e8e3da]"><div /><div className="px-2 py-3 text-center text-[10px] font-bold uppercase tracking-[0.16em] text-[#8b8d88]">Mon <span className="ml-1 text-sm tracking-normal text-[#23313d]">21</span></div><div className="px-2 py-3 text-center text-[10px] font-bold uppercase tracking-[0.16em] text-[#8b8d88]">Tue <span className="ml-1 text-sm tracking-normal text-[#23313d]">22</span></div><div className="px-2 py-3 text-center text-[10px] font-bold uppercase tracking-[0.16em] text-[#8b8d88]">Wed <span className="ml-1 text-sm tracking-normal text-[#23313d]">23</span></div><div className="px-2 py-3 text-center text-[10px] font-bold uppercase tracking-[0.16em] text-[#8b8d88]">Thu <span className="ml-1 text-sm tracking-normal text-[#23313d]">24</span></div><div className="px-2 py-3 text-center text-[10px] font-bold uppercase tracking-[0.16em] text-[#8b8d88]">Fri <span className="ml-1 text-sm tracking-normal text-[#23313d]">25</span></div></div><div className="grid grid-cols-[58px_repeat(5,minmax(130px,1fr))]"><div className="relative">{TIMES.map((time) => <div key={time} className="h-[76px] border-b border-[#eeeae3] pr-2 pt-1 text-right text-[10px] text-[#a1a39d]">{time > 12 ? time - 12 : time}{time >= 12 ? "p" : "a"}</div>)}</div>{WEEK.map((day, dayIndex) => <div key={day.label} className="relative border-l border-[#eeeae3]">{TIMES.map((time) => <div key={time} className="relative h-[76px] border-b border-[#eeeae3]"><button type="button" aria-label={`Create appointment on ${day.full} at ${formatTime(time)}`} onClick={() => openNewAppointment({ date: day.iso, time: `${String(time).padStart(2, "0")}:00` })} className="absolute inset-0 z-0 rounded-sm transition-colors hover:bg-[#fff5ef] focus-visible:bg-[#fff5ef]" /></div>)}{filteredAppointments.filter((appointment) => appointment.day === dayIndex).map((appointment) => <AppointmentCard key={appointment.id} appointment={appointment} onSelect={() => setSelectedAppointment(appointment)} />)}</div>)}</div></div></div></div>
+              <CalendarBoard appointments={filteredAppointments} onSelect={setSelectedAppointment} onCreate={openNewAppointment} />
 
               <div id="tasks" className="rounded-2xl border border-[#ded9d0] bg-[#fbfaf7] shadow-sm"><div className="flex items-start justify-between border-b border-[#e8e3da] px-5 py-4"><div><h2 className="font-serif text-xl font-semibold text-[#23313d]">Needs attention</h2><p className="mt-1 text-xs text-[#8b8d88]">The next best actions for your team</p></div><button type="button" className="rounded-lg p-2 text-[#8b8d88] hover:bg-[#eeeae3]" aria-label="More actions"><MoreHorizontal className="size-4" /></button></div>{appointments.filter((appointment) => appointment.readiness !== "ready").map((appointment) => <ReadinessCard key={appointment.id} appointment={appointment} onSelect={() => setSelectedAppointment(appointment)} />)}<div className="border-t border-[#e8e3da] px-5 py-4"><a href="#tasks" className="flex items-center gap-2 text-xs font-semibold text-[#b65f3a] hover:underline">View all tasks <ArrowUpRight className="size-3.5" /></a></div></div>
             </section>
@@ -960,7 +1153,8 @@ export function MatterPilotDashboard({ matters, initialAppointments = [], initia
             <DeadlineCenter matters={matters} deadlines={initialDeadlines} />
 
             <ContactCenter matters={matters} contacts={initialContacts} />
-            <PortalCenter appointments={appointments} onSelect={setSelectedAppointment} onCreate={() => openNewAppointment()} />
+            <PacketCenter appointments={appointments} onSelect={setSelectedAppointment} onCreate={() => openNewAppointment()} />
+            <PortalCenter appointments={appointments} onSelect={setSelectedAppointment} />
 
             <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]"><div className="rounded-2xl border border-[#ded9d0] bg-[#fbfaf7] p-5 shadow-sm"><div className="flex items-center justify-between"><div><h2 className="font-serif text-xl font-semibold text-[#23313d]">Your matters</h2><p className="mt-1 text-xs text-[#8b8d88]">Every appointment has a home</p></div><Link href="/matters" className="text-xs font-semibold text-[#b65f3a] hover:underline">View all matters <ArrowUpRight className="ml-1 inline size-3" /></Link></div><div className="mt-5 grid gap-3 sm:grid-cols-2">{(matters.length > 0 ? matters.slice(0, 4) : [{ id: "demo", name: "Harlow v. Green", matter_number: "DEMO-001", case_mode: "civil_defense", status: "active" }]).map((matter, index) => <Link href={matter.id === "demo" ? "/matters" : `/matters/${matter.id}`} key={matter.id} className="group flex items-center gap-3 rounded-xl border border-[#e6e0d7] bg-white p-3 transition-colors hover:border-[#c08a6d] hover:bg-[#fffaf6]"><span className={cn("flex size-9 items-center justify-center rounded-lg text-xs font-bold", index % 2 === 0 ? "bg-[#e8eef0] text-[#385367]" : "bg-[#f4e5db] text-[#955033]")}><Gavel className="size-4" /></span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-[#35433e]">{matter.name}</span><span className="mt-0.5 block text-[11px] text-[#8b8d88]">{matter.matter_number} · {matter.status}</span></span><ArrowUpRight className="size-4 text-[#a6a9a2] transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" /></Link>)}</div></div><div className="rounded-2xl border border-[#d5c8b9] bg-[#ead9c4] p-5 shadow-sm"><div className="flex items-center gap-2 text-[#6f4f3c]"><Link2 className="size-4" /><span className="text-xs font-bold uppercase tracking-[0.16em]">Public booking</span></div><h2 className="mt-4 font-serif text-2xl font-semibold leading-tight text-[#3b3029]">Let clients book the right time.</h2><p className="mt-2 text-sm leading-6 text-[#705d50]">Share a branded intake link that checks conflicts and collects the basics before a consultation lands on your calendar.</p><Link href="/book/demo" className="mt-5 inline-flex h-9 items-center gap-2 rounded-lg bg-[#3b3029] px-3.5 text-sm font-semibold text-[#fffaf4] transition-colors hover:bg-[#514238]">Preview booking link <ArrowUpRight className="size-4" /></Link></div></section>
           </div>
