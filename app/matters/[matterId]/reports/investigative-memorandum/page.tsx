@@ -25,5 +25,5 @@ export default async function InvestigativeMemorandumPage({ params }: { params: 
     { heading: "Leads requiring work", items: (leads ?? []).map((item) => ({ label: item.description, detail: `${item.status}${item.assigned_to ? " · assigned" : " · unassigned"}`, tone: item.status === "open" ? "warn" as const : "normal" as const })) },
     { heading: "Contradictions and limitations", items: (contradictions ?? []).map((item) => ({ label: item.title, detail: `${item.resolution_status}${item.missing_evidence ? ` · missing evidence: ${item.missing_evidence}` : ""}`, tone: item.resolution_status === "unresolved" ? "warn" as const : "normal" as const })) },
     { heading: "Analysis drafts", items: (analyses ?? []).map((item) => ({ label: item.title, detail: `${item.status} · ${item.summary}${item.recommended_next_steps ? ` · next: ${item.recommended_next_steps}` : ""}`, tone: item.status === "final" ? "good" as const : "normal" as const })) },
-  ]} />
+  ]} matterId={matterId} reportType="investigative-memorandum" />
 }

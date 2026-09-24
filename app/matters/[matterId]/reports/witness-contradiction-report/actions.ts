@@ -11,6 +11,7 @@ export async function recordReportGenerated(matterId: string) {
     report_type: "witness_contradiction_report",
     title: "Witness Contradiction Report",
     status: "available",
+    output_format: "print",
     generated_by: user.id,
   })
 }

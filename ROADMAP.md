@@ -62,7 +62,7 @@ This is the ordered product plan for continuing the current build. Completed wor
 ## Phase 6 — reporting and firm operations
 
 - [x] Add the remaining derived report types with print-ready export and matter-scoped report views.
-- [ ] Add PDF export and report history for the derived report types.
+- [x] Add branded PDF export and matter-scoped report history for all six report types.
 - [x] Add matter activity and communication timelines.
 - [x] Add time tracking and draft billing foundations; payment/billing-provider integrations remain later in the product cycle.
 - [ ] Add firm settings, templates, roles, retention, and export controls.

@@ -21,6 +21,12 @@ const palette = {
   white: rgb(1, 1, 1),
 }
 
+export type PdfReportSection = {
+  heading: string
+  body?: string
+  items?: { label: string; detail: string; tone?: "normal" | "warn" | "good" }[]
+}
+
 function safePdfText(value: string | null | undefined) {
   return (value ?? "")
     .replaceAll("—", "-")
@@ -332,5 +338,36 @@ export async function createWitnessContradictionPdf(input: {
     })
   })
   renderer.paragraph("Limitations: this report reflects only statements, contradictions, and evidence links recorded in TraceLine at generation time. It does not make an auto-generated conclusion about a witness's honesty or reliability.", { muted: true, size: 8, after: 0 })
+  return renderer.finish()
+}
+
+export async function createDerivedReportPdf(input: {
+  matterName: string
+  matterNumber: string
+  generatedAt: string
+  reportTitle: string
+  description: string
+  sections: PdfReportSection[]
+}) {
+  const renderer = await PdfRenderer.create({ ...input })
+  renderer.paragraph(input.description, { muted: true })
+
+  for (const section of input.sections) {
+    renderer.heading(section.heading)
+    if (section.body) renderer.paragraph(section.body)
+    if (!section.items?.length) {
+      if (!section.body) renderer.paragraph("No records on file.", { muted: true, size: 9 })
+      continue
+    }
+    for (const item of section.items) {
+      renderer.paragraph(`${item.label}: ${item.detail}`, { size: 9, after: 3 })
+      if (item.tone === "warn") renderer.status("Needs review")
+      if (item.tone === "good") renderer.status("Covered")
+    }
+    renderer.rule()
+    renderer.paragraph("", { size: 4, after: 2 })
+  }
+
+  renderer.paragraph("Limitations: this report reflects only records entered in MatterPilot at generation time. It does not make legal conclusions, authenticate evidence, calculate binding legal deadlines, or replace attorney review.", { muted: true, size: 8, after: 0 })
   return renderer.finish()
 }

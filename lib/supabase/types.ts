@@ -1540,7 +1540,9 @@ export type Database = {
       }
       reports: {
         Row: {
+          byte_size: number | null
           created_at: string
+          file_name: string | null
           filters: Json | null
           generated_at: string
           generated_by: string | null
@@ -1549,9 +1551,12 @@ export type Database = {
           report_type: string
           status: string
           title: string
+          output_format: string
         }
         Insert: {
+          byte_size?: number | null
           created_at?: string
+          file_name?: string | null
           filters?: Json | null
           generated_at?: string
           generated_by?: string | null
@@ -1560,9 +1565,12 @@ export type Database = {
           report_type: string
           status?: string
           title: string
+          output_format?: string
         }
         Update: {
+          byte_size?: number | null
           created_at?: string
+          file_name?: string | null
           filters?: Json | null
           generated_at?: string
           generated_by?: string | null
@@ -1571,6 +1579,7 @@ export type Database = {
           report_type?: string
           status?: string
           title?: string
+          output_format?: string
         }
         Relationships: [
           {

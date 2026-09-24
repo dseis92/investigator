@@ -11,6 +11,7 @@ export async function recordReportGenerated(matterId: string) {
     report_type: "proposition_evidence_matrix",
     title: "Proposition Evidence Matrix",
     status: "available",
+    output_format: "print",
     generated_by: user.id,
   })
 }
