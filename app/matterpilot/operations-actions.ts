@@ -1,14 +1,17 @@
 "use server"
 
+import { randomBytes } from "node:crypto"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 import { generateOperationsInsight } from "@/lib/ai/operations-insights"
 import { logAuditEvent } from "@/lib/audit/log-audit-event"
 import { requireCurrentUser } from "@/lib/auth/get-current-user"
+import { buildCalendarAuthorizationUrl, hashOAuthState, isCalendarProviderConfigured, type CalendarProvider } from "@/lib/calendar/oauth"
+import { syncCalendarConnection } from "@/lib/calendar/sync"
 import { createClient } from "@/lib/supabase/server"
 
-type OperationResult = { ok: true; id?: string; message?: string } | { ok: false; error: string }
+type OperationResult = { ok: true; id?: string; message?: string; url?: string } | { ok: false; error: string }
 
 const taskTemplateSchema = z.object({
   matterId: z.string().uuid(),
@@ -248,15 +251,30 @@ export async function createInvoiceAction(input: z.input<typeof invoiceSchema>):
   return { ok: true, id: invoice.id }
 }
 
-export async function requestCalendarConnectionAction(provider: "google" | "outlook"): Promise<OperationResult> {
+export async function requestCalendarConnectionAction(input: { provider: CalendarProvider; matterId: string }): Promise<OperationResult> {
+  const parsed = z.object({ provider: z.enum(["google", "outlook"]), matterId: z.string().uuid() }).safeParse(input)
+  if (!parsed.success) return { ok: false, error: "Choose a matter and calendar provider first." }
   const user = await requireCurrentUser()
-  const configured = provider === "google" ? Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) : Boolean(process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET)
-  if (!configured) return { ok: false, error: `${provider === "google" ? "Google" : "Outlook"} credentials are not configured yet. Add the provider client ID and secret before connecting.` }
+  const { provider, matterId } = parsed.data
+  if (!isCalendarProviderConfigured(provider)) return { ok: false, error: `${provider === "google" ? "Google" : "Outlook"} credentials and token encryption are not configured yet.` }
   const supabase = await createClient()
-  const { data, error } = await supabase.from("calendar_sync_connections").upsert({ provider, user_id: user.id, status: "pending", updated_at: new Date().toISOString() }, { onConflict: "provider,user_id,matter_id" }).select("id").single()
+  const state = randomBytes(32).toString("hex")
+  const { data, error } = await supabase.from("calendar_sync_connections").upsert({ provider, user_id: user.id, matter_id: matterId, status: "pending", oauth_state_hash: hashOAuthState(state), error_message: null, updated_at: new Date().toISOString() }, { onConflict: "provider,user_id,matter_id" }).select("id").single()
   if (error || !data) return { ok: false, error: error?.message ?? "Unable to start calendar connection." }
   revalidatePath("/matterpilot/operations")
-  return { ok: true, id: data.id, message: "Connection request recorded. Complete the provider OAuth step when credentials are configured." }
+  return { ok: true, id: data.id, url: buildCalendarAuthorizationUrl(provider, state), message: `Redirecting to ${provider === "google" ? "Google" : "Microsoft"} to authorize this matter calendar.` }
+}
+
+export async function syncCalendarConnectionAction(input: { connectionId: string }): Promise<OperationResult> {
+  if (!z.string().uuid().safeParse(input.connectionId).success) return { ok: false, error: "Calendar connection not found." }
+  const user = await requireCurrentUser()
+  try {
+    const result = await syncCalendarConnection(input.connectionId, user.id)
+    revalidatePath("/matterpilot/operations")
+    return { ok: true, message: `Synced ${result.total} appointment${result.total === 1 ? "" : "s"} (${result.created} new, ${result.updated} updated).` }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Calendar synchronization failed." }
+  }
 }
 
 export async function runMatterAiInsightAction(input: { matterId: string; runType: "matter_brief" | "evidence_summary" | "contradiction_scan" | "timeline_gap_scan" | "missing_document_scan" | "deposition_questions" }): Promise<OperationResult> {

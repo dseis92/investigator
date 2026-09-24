@@ -3,7 +3,21 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
-import { Activity, Bell, CalendarDays, Check, Clock3, FileText, Gavel, Link2, Plus, Receipt, Sparkles, WandSparkles, X } from "lucide-react"
+import {
+  Activity,
+  Bell,
+  CalendarDays,
+  Check,
+  Clock3,
+  FileText,
+  Gavel,
+  Link2,
+  Plus,
+  Receipt,
+  Sparkles,
+  WandSparkles,
+  X,
+} from "lucide-react"
 
 import {
   calculateCourtDeadlineAction,
@@ -17,45 +31,179 @@ import {
   refreshNotificationQueueAction,
   reviewAiInsightAction,
   runMatterAiInsightAction,
+  syncCalendarConnectionAction,
 } from "@/app/matterpilot/operations-actions"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 
 type Matter = { id: string; name: string; matter_number: string }
-type Template = { id: string; matterId: string; matter: string; label: string; frequency: string; intervalCount: number; isBlocking: boolean; assignedTo: string | null; nextRunAt: string | null; active: boolean }
-type Appointment = { id: string; matterId: string; title: string; startsAt: string }
-type Notification = { id: string; matterId: string; matter: string; kind: string; title: string; body: string; href: string | null; readAt: string | null; createdAt: string }
-type Rule = { id: string; name: string; jurisdiction: string; triggerKind: string; offsetDays: number; businessDays: boolean; description: string | null }
-type Connection = { id: string; provider: "google" | "outlook"; status: string; email: string | null; lastSyncAt: string | null }
-type TimeEntry = { id: string; matterId: string; matter: string; description: string; durationMinutes: number; rateCents: number; status: string; createdAt: string }
-type Invoice = { id: string; matterId: string; matter: string; invoiceNumber: string; status: string; subtotalCents: number; issuedAt: string | null; dueAt: string | null }
-type ActivityEntry = { id: string; matter: string; action: string; entityType: string; summary: string; createdAt: string }
-type AiRun = { id: string; matterId: string; matter: string; runType: string; status: string; model: string | null; output: { headline?: string; summary?: string; priorities?: string[]; risks?: string[]; questions?: string[]; citedRecords?: string[] }; createdAt: string }
+type Template = {
+  id: string
+  matterId: string
+  matter: string
+  label: string
+  frequency: string
+  intervalCount: number
+  isBlocking: boolean
+  assignedTo: string | null
+  nextRunAt: string | null
+  active: boolean
+}
+type Appointment = {
+  id: string
+  matterId: string
+  title: string
+  startsAt: string
+}
+type Notification = {
+  id: string
+  matterId: string
+  matter: string
+  kind: string
+  title: string
+  body: string
+  href: string | null
+  readAt: string | null
+  createdAt: string
+}
+type Rule = {
+  id: string
+  name: string
+  jurisdiction: string
+  triggerKind: string
+  offsetDays: number
+  businessDays: boolean
+  description: string | null
+}
+type Connection = {
+  id: string
+  provider: "google" | "outlook"
+  matterId: string | null
+  matter: string
+  status: string
+  email: string | null
+  calendarName: string | null
+  lastSyncAt: string | null
+  errorMessage: string | null
+}
+type TimeEntry = {
+  id: string
+  matterId: string
+  matter: string
+  description: string
+  durationMinutes: number
+  rateCents: number
+  status: string
+  createdAt: string
+}
+type Invoice = {
+  id: string
+  matterId: string
+  matter: string
+  invoiceNumber: string
+  status: string
+  subtotalCents: number
+  issuedAt: string | null
+  dueAt: string | null
+}
+type ActivityEntry = {
+  id: string
+  matter: string
+  action: string
+  entityType: string
+  summary: string
+  createdAt: string
+}
+type AiRun = {
+  id: string
+  matterId: string
+  matter: string
+  runType: string
+  status: string
+  model: string | null
+  output: {
+    headline?: string
+    summary?: string
+    priorities?: string[]
+    risks?: string[]
+    questions?: string[]
+    citedRecords?: string[]
+  }
+  createdAt: string
+}
 
-export function OperationsCenter({ matters, templates, appointments, notifications, rules, connections, timeEntries, invoices, activity, aiRuns, aiConfigured }: { matters: Matter[]; templates: Template[]; appointments: Appointment[]; notifications: Notification[]; rules: Rule[]; connections: Connection[]; timeEntries: TimeEntry[]; invoices: Invoice[]; activity: ActivityEntry[]; aiRuns: AiRun[]; aiConfigured: boolean }) {
+export function OperationsCenter({
+  matters,
+  templates,
+  appointments,
+  notifications,
+  rules,
+  connections,
+  timeEntries,
+  invoices,
+  activity,
+  aiRuns,
+  aiConfigured,
+  calendarReady,
+}: {
+  matters: Matter[]
+  templates: Template[]
+  appointments: Appointment[]
+  notifications: Notification[]
+  rules: Rule[]
+  connections: Connection[]
+  timeEntries: TimeEntry[]
+  invoices: Invoice[]
+  activity: ActivityEntry[]
+  aiRuns: AiRun[]
+  aiConfigured: boolean
+  calendarReady: { google: boolean; outlook: boolean }
+}) {
   const router = useRouter()
   const [message, setMessage] = useState("")
   const [error, setError] = useState("")
   const [saving, setSaving] = useState("")
 
-  function begin(key: string) { setSaving(key); setError(""); setMessage("") }
+  function begin(key: string) {
+    setSaving(key)
+    setError("")
+    setMessage("")
+  }
   function finish(result: { ok: boolean; error?: string; message?: string }) {
     setSaving("")
     if (!result.ok) setError(result.error ?? "Unable to complete that action.")
-    else { setMessage(result.message ?? "Saved."); router.refresh() }
+    else {
+      setMessage(result.message ?? "Saved.")
+      router.refresh()
+    }
   }
 
   const [templateMatter, setTemplateMatter] = useState(matters[0]?.id ?? "")
   const [templateLabel, setTemplateLabel] = useState("")
-  const [templateFrequency, setTemplateFrequency] = useState<"weekly" | "monthly" | "after_appointment">("weekly")
+  const [templateFrequency, setTemplateFrequency] = useState<
+    "weekly" | "monthly" | "after_appointment"
+  >("weekly")
   const [templateInterval, setTemplateInterval] = useState("1")
   const [templateNextRun, setTemplateNextRun] = useState("")
-  const [templateTargets, setTemplateTargets] = useState<Record<string, string>>({})
+  const [templateTargets, setTemplateTargets] = useState<
+    Record<string, string>
+  >({})
 
   async function saveTemplate() {
     begin("template")
-    finish(await createTaskTemplateAction({ matterId: templateMatter, label: templateLabel, frequency: templateFrequency, intervalCount: Number(templateInterval), isBlocking: true, nextRunAt: templateNextRun ? new Date(templateNextRun).toISOString() : "" }))
+    finish(
+      await createTaskTemplateAction({
+        matterId: templateMatter,
+        label: templateLabel,
+        frequency: templateFrequency,
+        intervalCount: Number(templateInterval),
+        isBlocking: true,
+        nextRunAt: templateNextRun
+          ? new Date(templateNextRun).toISOString()
+          : "",
+      })
+    )
     if (!error) setTemplateLabel("")
   }
 
@@ -70,13 +218,30 @@ export function OperationsCenter({ matters, templates, appointments, notificatio
 
   async function saveRule() {
     begin("rule")
-    finish(await createCourtRuleAction({ name: ruleName, jurisdiction: ruleJurisdiction, triggerKind: "filing", offsetDays: Number(ruleOffset), businessDays: ruleBusinessDays }))
+    finish(
+      await createCourtRuleAction({
+        name: ruleName,
+        jurisdiction: ruleJurisdiction,
+        triggerKind: "filing",
+        offsetDays: Number(ruleOffset),
+        businessDays: ruleBusinessDays,
+      })
+    )
     setRuleName("")
   }
 
   async function calculateDeadline() {
     begin("deadline")
-    finish(await calculateCourtDeadlineAction({ matterId: deadlineMatter, ruleId: deadlineRule, title: deadlineTitle, triggerAt: new Date(deadlineTrigger).toISOString(), kind: "filing", priority: "high" }))
+    finish(
+      await calculateCourtDeadlineAction({
+        matterId: deadlineMatter,
+        ruleId: deadlineRule,
+        title: deadlineTitle,
+        triggerAt: new Date(deadlineTrigger).toISOString(),
+        kind: "filing",
+        priority: "high",
+      })
+    )
   }
 
   const [timeMatter, setTimeMatter] = useState(matters[0]?.id ?? "")
@@ -89,48 +254,981 @@ export function OperationsCenter({ matters, templates, appointments, notificatio
 
   async function saveTime() {
     begin("time")
-    finish(await createTimeEntryAction({ matterId: timeMatter, description: timeDescription, durationMinutes: Number(timeMinutes), rateCents: Math.round(Number(timeRate) * 100), billable: true }))
+    finish(
+      await createTimeEntryAction({
+        matterId: timeMatter,
+        description: timeDescription,
+        durationMinutes: Number(timeMinutes),
+        rateCents: Math.round(Number(timeRate) * 100),
+        billable: true,
+      })
+    )
     setTimeDescription("")
   }
 
   async function createInvoice() {
     begin("invoice")
-    finish(await createInvoiceAction({ matterId: invoiceMatter, invoiceNumber, dueAt: "", timeEntryIds: selectedEntries }))
+    finish(
+      await createInvoiceAction({
+        matterId: invoiceMatter,
+        invoiceNumber,
+        dueAt: "",
+        timeEntryIds: selectedEntries,
+      })
+    )
     setSelectedEntries([])
     setInvoiceNumber("")
   }
 
-  async function connect(provider: "google" | "outlook") { begin(provider); finish(await requestCalendarConnectionAction(provider)) }
+  const [calendarMatter, setCalendarMatter] = useState(matters[0]?.id ?? "")
 
-  async function generateInsight(matterId: string, runType: AiRun["runType"] = "matter_brief") {
-    begin(`ai-${matterId}`)
-    finish(await runMatterAiInsightAction({ matterId, runType: runType as "matter_brief" }))
+  async function connect(provider: "google" | "outlook", matterId: string) {
+    begin(`${provider}-${matterId}`)
+    const result = await requestCalendarConnectionAction({ provider, matterId })
+    if (result.ok && result.url) {
+      window.location.assign(result.url)
+      return
+    }
+    finish(result)
   }
 
-  return <div className="min-h-svh bg-[#f4f1eb] text-[#23313d]"><div className="mx-auto max-w-[1500px] space-y-7 px-4 py-6 sm:px-7 sm:py-8"><header className="relative overflow-hidden rounded-2xl bg-[#23313d] px-5 py-7 text-white shadow-xl sm:px-8"><div className="absolute -right-10 -top-24 size-72 rounded-full border border-white/10" /><div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between"><div><p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#d5a083]">MatterPilot operations</p><h1 className="mt-2 max-w-2xl font-serif text-3xl leading-tight sm:text-4xl">Turn the work behind the calendar into an operating system.</h1><p className="mt-3 max-w-2xl text-sm leading-6 text-[#b9c5ca]">Recurring work, deadline math, notifications, billing, calendar connections, activity, and AI drafts—kept matter-aware and reviewable.</p></div><Link href="/matterpilot" className="inline-flex h-9 items-center justify-center rounded-lg border border-white/20 px-3.5 text-xs font-semibold text-white hover:bg-white/10">Back to dashboard</Link></div></header>
+  async function sync(connectionId: string) {
+    begin(`sync-${connectionId}`)
+    finish(await syncCalendarConnectionAction({ connectionId }))
+  }
 
-      {error ? <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"><X className="mt-0.5 size-4 shrink-0" />{error}</div> : null}{message ? <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"><Check className="mt-0.5 size-4 shrink-0" />{message}</div> : null}
+  async function generateInsight(
+    matterId: string,
+    runType: AiRun["runType"] = "matter_brief"
+  ) {
+    begin(`ai-${matterId}`)
+    finish(
+      await runMatterAiInsightAction({
+        matterId,
+        runType: runType as "matter_brief",
+      })
+    )
+  }
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><Metric icon={Clock3} label="Open recurring templates" value={String(templates.filter((template) => template.active).length)} /><Metric icon={Bell} label="Unread notifications" value={String(notifications.filter((item) => !item.readAt).length)} /><Metric icon={Receipt} label="Submitted time" value={`${timeEntries.filter((entry) => entry.status === "submitted").reduce((sum, entry) => sum + entry.durationMinutes, 0)} min`} /><Metric icon={Sparkles} label="AI drafts" value={String(aiRuns.length)} /></section>
+  return (
+    <div className="min-h-svh bg-[#f4f1eb] text-[#23313d]">
+      <div className="mx-auto max-w-[1500px] space-y-7 px-4 py-6 sm:px-7 sm:py-8">
+        <header className="relative overflow-hidden rounded-2xl bg-[#23313d] px-5 py-7 text-white shadow-xl sm:px-8">
+          <div className="absolute -top-24 -right-10 size-72 rounded-full border border-white/10" />
+          <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-[10px] font-bold tracking-[0.2em] text-[#d5a083] uppercase">
+                MatterPilot operations
+              </p>
+              <h1 className="mt-2 max-w-2xl font-serif text-3xl leading-tight sm:text-4xl">
+                Turn the work behind the calendar into an operating system.
+              </h1>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-[#b9c5ca]">
+                Recurring work, deadline math, notifications, billing, calendar
+                connections, activity, and AI drafts—kept matter-aware and
+                reviewable.
+              </p>
+            </div>
+            <Link
+              href="/matterpilot"
+              className="inline-flex h-9 items-center justify-center rounded-lg border border-white/20 px-3.5 text-xs font-semibold text-white hover:bg-white/10"
+            >
+              Back to dashboard
+            </Link>
+          </div>
+        </header>
 
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]"><Panel icon={Clock3} title="Recurring work" eyebrow="Templates + materialization" description="Define preparation or administrative work that repeats, then place it onto a real appointment when the work is due."><div className="grid gap-2 sm:grid-cols-2"><Select label="Matter" value={templateMatter} onChange={setTemplateMatter} options={matters.map((matter) => [matter.id, matter.name])} /><label className="text-[11px] font-semibold text-[#737872]">Task label<Input value={templateLabel} onChange={(event) => setTemplateLabel(event.target.value)} placeholder="Weekly discovery review" /></label><label className="text-[11px] font-semibold text-[#737872]">Cadence<select value={templateFrequency} onChange={(event) => setTemplateFrequency(event.target.value as typeof templateFrequency)} className="mt-1 h-10 w-full rounded-lg border border-[#ded9d0] bg-white px-3 text-sm font-normal text-[#39443f]"><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="after_appointment">After appointment</option></select></label><label className="text-[11px] font-semibold text-[#737872]">Interval<input type="number" min="1" max="52" value={templateInterval} onChange={(event) => setTemplateInterval(event.target.value)} /></label><label className="text-[11px] font-semibold text-[#737872] sm:col-span-2">First run (optional)<Input type="datetime-local" value={templateNextRun} onChange={(event) => setTemplateNextRun(event.target.value)} /></label></div><Button onClick={() => void saveTemplate()} disabled={saving === "template" || !templateMatter || !templateLabel.trim()} className="mt-3 bg-[#a24f31] hover:bg-[#8f432a]">{saving === "template" ? "Saving…" : "Save recurring task"}<Plus /></Button><div className="mt-5 space-y-2">{templates.length ? templates.map((template) => <div key={template.id} className="rounded-xl border border-[#e8e3da] bg-white p-3"><div className="flex flex-wrap items-center gap-2"><span className="font-semibold text-[#39443f]">{template.label}</span><span className="rounded-full bg-[#f1eee8] px-2 py-1 text-[10px] font-bold text-[#737872]">{template.frequency.replace("after_appointment", "after appointment")}</span>{template.isBlocking ? <span className="rounded-full bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-700">Blocking</span> : null}</div><p className="mt-1 text-[11px] text-[#8b8d88]">{template.matter}{template.nextRunAt ? ` · next ${new Date(template.nextRunAt).toLocaleDateString()}` : " · ready to materialize"}</p><div className="mt-3 flex flex-wrap gap-2"><select value={templateTargets[template.id] ?? ""} onChange={(event) => setTemplateTargets((current) => ({ ...current, [template.id]: event.target.value }))} className="h-8 min-w-0 flex-1 rounded-lg border border-[#ded9d0] bg-white px-2 text-[11px] text-[#4d5851]"><option value="">Choose appointment…</option>{appointments.filter((appointment) => appointment.matterId === template.matterId).map((appointment) => <option key={appointment.id} value={appointment.id}>{appointment.title} · {new Date(appointment.startsAt).toLocaleDateString()}</option>)}</select><Button size="sm" variant="outline" disabled={!templateTargets[template.id] || saving === `template-${template.id}`} onClick={() => { begin(`template-${template.id}`); void materializeTaskTemplateAction({ matterId: template.matterId, templateId: template.id, appointmentId: templateTargets[template.id] }).then(finish) }} className="border-[#ded9d0] text-[#a24f31]">Add to appointment</Button></div></div>) : <Empty icon={Clock3} text="No recurring task templates yet." />}</div></Panel>
+        {error ? (
+          <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+            <X className="mt-0.5 size-4 shrink-0" />
+            {error}
+          </div>
+        ) : null}
+        {message ? (
+          <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            <Check className="mt-0.5 size-4 shrink-0" />
+            {message}
+          </div>
+        ) : null}
 
-        <Panel id="notifications" icon={Bell} title="Notifications" eyebrow="Attention queue" description="Overdue tasks and deadlines are now refreshed automatically every hour. Use the manual refresh when you need the queue immediately."><div className="mb-4 flex items-center justify-between gap-3"><p className="text-xs text-[#8b8d88]">Scheduled refresh is active.</p><Button size="sm" variant="outline" onClick={() => { begin("notifications"); void refreshNotificationQueueAction().then(finish) }} disabled={saving === "notifications"} className="border-[#ded9d0] text-[#a24f31]">{saving === "notifications" ? "Refreshing…" : "Refresh now"}<Bell /></Button></div><div className="space-y-2">{notifications.length ? notifications.slice(0, 12).map((notification) => <div key={notification.id} className={cn("rounded-xl border p-3", notification.readAt ? "border-[#eee9e2] bg-white/60" : "border-[#eadbd0] bg-white")}><div className="flex items-start gap-3"><span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#f4e5db] text-[#a24f31]"><Bell className="size-4" /></span><div className="min-w-0 flex-1"><p className="text-sm font-semibold text-[#39443f]">{notification.title}</p><p className="mt-1 text-xs leading-5 text-[#737872]">{notification.body}</p><p className="mt-1 text-[10px] text-[#a1a39d]">{notification.matter} · {new Date(notification.createdAt).toLocaleString()}</p></div>{!notification.readAt ? <Button size="sm" variant="ghost" onClick={() => { begin(`notification-${notification.id}`); void markNotificationReadAction({ notificationId: notification.id, matterId: notification.matterId }).then(finish) }} className="shrink-0 px-2 text-[10px] text-[#a24f31]">Mark read</Button> : null}</div></div>) : <Empty icon={Bell} text="No notifications yet. New deadline and workflow events will appear here." />}</div></Panel></section>
+        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <Metric
+            icon={Clock3}
+            label="Open recurring templates"
+            value={String(
+              templates.filter((template) => template.active).length
+            )}
+          />
+          <Metric
+            icon={Bell}
+            label="Unread notifications"
+            value={String(notifications.filter((item) => !item.readAt).length)}
+          />
+          <Metric
+            icon={Receipt}
+            label="Submitted time"
+            value={`${timeEntries.filter((entry) => entry.status === "submitted").reduce((sum, entry) => sum + entry.durationMinutes, 0)} min`}
+          />
+          <Metric
+            icon={Sparkles}
+            label="AI drafts"
+            value={String(aiRuns.length)}
+          />
+        </section>
 
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]"><Panel icon={Gavel} title="Court-rule calculations" eyebrow="Deadline engine" description="Save reusable jurisdiction rules and calculate a proposed due date from a trigger. Every result shows the rule and trigger used so a human can verify it."><div className="grid gap-2 sm:grid-cols-2"><label className="text-[11px] font-semibold text-[#737872]">Rule name<Input value={ruleName} onChange={(event) => setRuleName(event.target.value)} placeholder="State response deadline" /></label><label className="text-[11px] font-semibold text-[#737872]">Jurisdiction<Input value={ruleJurisdiction} onChange={(event) => setRuleJurisdiction(event.target.value)} placeholder="State · County" /></label><label className="text-[11px] font-semibold text-[#737872]">Offset days<input type="number" value={ruleOffset} onChange={(event) => setRuleOffset(event.target.value)} /></label><label className="flex items-center gap-2 self-end pb-2 text-xs font-semibold text-[#4d5851]"><input type="checkbox" checked={ruleBusinessDays} onChange={(event) => setRuleBusinessDays(event.target.checked)} className="size-4 accent-[#a24f31]" />Business days</label></div><Button onClick={() => void saveRule()} disabled={saving === "rule" || !ruleName.trim() || !ruleJurisdiction.trim()} className="mt-3 bg-[#23313d] hover:bg-[#18242e]">{saving === "rule" ? "Saving…" : "Save rule"}<Plus /></Button><div className="mt-5 space-y-2">{rules.length ? rules.map((rule) => <div key={rule.id} className="rounded-xl border border-[#e8e3da] bg-white p-3"><div className="flex items-center justify-between gap-2"><p className="text-sm font-semibold text-[#39443f]">{rule.name}</p><span className="rounded-full bg-[#e8eef0] px-2 py-1 text-[10px] font-bold text-[#385367]">{rule.offsetDays >= 0 ? `+${rule.offsetDays}` : rule.offsetDays} {rule.businessDays ? "business" : "calendar"} days</span></div><p className="mt-1 text-[11px] text-[#8b8d88]">{rule.jurisdiction} · trigger: {rule.triggerKind.replace("_", " ")}</p></div>) : <Empty icon={Gavel} text="No court rules saved. Add the rules your firm verifies most often." />}</div></Panel><Panel icon={CalendarDays} title="Calculate a deadline" eyebrow="Human verification required" description="Use a saved rule as a calculation aid. MatterPilot never treats a calculated date as legal advice or a final filing instruction."><div className="space-y-2"><Select label="Matter" value={deadlineMatter} onChange={setDeadlineMatter} options={matters.map((matter) => [matter.id, matter.name])} /><Select label="Court rule" value={deadlineRule} onChange={setDeadlineRule} options={rules.map((rule) => [rule.id, `${rule.name} · ${rule.jurisdiction}`])} /><label className="text-[11px] font-semibold text-[#737872]">Deadline title<Input value={deadlineTitle} onChange={(event) => setDeadlineTitle(event.target.value)} placeholder="Response due" /></label><label className="text-[11px] font-semibold text-[#737872]">Trigger date and time<Input type="datetime-local" value={deadlineTrigger} onChange={(event) => setDeadlineTrigger(event.target.value)} /></label></div><Button onClick={() => void calculateDeadline()} disabled={saving === "deadline" || !deadlineMatter || !deadlineRule || !deadlineTitle.trim() || !deadlineTrigger} className="mt-3 w-full bg-[#a24f31] hover:bg-[#8f432a]">{saving === "deadline" ? "Calculating…" : "Calculate and add deadline"}<CalendarDays /></Button></Panel></section>
+        <section className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+          <Panel
+            icon={Clock3}
+            title="Recurring work"
+            eyebrow="Templates + materialization"
+            description="Define preparation or administrative work that repeats, then place it onto a real appointment when the work is due."
+          >
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Select
+                label="Matter"
+                value={templateMatter}
+                onChange={setTemplateMatter}
+                options={matters.map((matter) => [matter.id, matter.name])}
+              />
+              <label className="text-[11px] font-semibold text-[#737872]">
+                Task label
+                <Input
+                  value={templateLabel}
+                  onChange={(event) => setTemplateLabel(event.target.value)}
+                  placeholder="Weekly discovery review"
+                />
+              </label>
+              <label className="text-[11px] font-semibold text-[#737872]">
+                Cadence
+                <select
+                  value={templateFrequency}
+                  onChange={(event) =>
+                    setTemplateFrequency(
+                      event.target.value as typeof templateFrequency
+                    )
+                  }
+                  className="mt-1 h-10 w-full rounded-lg border border-[#ded9d0] bg-white px-3 text-sm font-normal text-[#39443f]"
+                >
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="after_appointment">After appointment</option>
+                </select>
+              </label>
+              <label className="text-[11px] font-semibold text-[#737872]">
+                Interval
+                <input
+                  type="number"
+                  min="1"
+                  max="52"
+                  value={templateInterval}
+                  onChange={(event) => setTemplateInterval(event.target.value)}
+                />
+              </label>
+              <label className="text-[11px] font-semibold text-[#737872] sm:col-span-2">
+                First run (optional)
+                <Input
+                  type="datetime-local"
+                  value={templateNextRun}
+                  onChange={(event) => setTemplateNextRun(event.target.value)}
+                />
+              </label>
+            </div>
+            <Button
+              onClick={() => void saveTemplate()}
+              disabled={
+                saving === "template" ||
+                !templateMatter ||
+                !templateLabel.trim()
+              }
+              className="mt-3 bg-[#a24f31] hover:bg-[#8f432a]"
+            >
+              {saving === "template" ? "Saving…" : "Save recurring task"}
+              <Plus />
+            </Button>
+            <div className="mt-5 space-y-2">
+              {templates.length ? (
+                templates.map((template) => (
+                  <div
+                    key={template.id}
+                    className="rounded-xl border border-[#e8e3da] bg-white p-3"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-semibold text-[#39443f]">
+                        {template.label}
+                      </span>
+                      <span className="rounded-full bg-[#f1eee8] px-2 py-1 text-[10px] font-bold text-[#737872]">
+                        {template.frequency.replace(
+                          "after_appointment",
+                          "after appointment"
+                        )}
+                      </span>
+                      {template.isBlocking ? (
+                        <span className="rounded-full bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-700">
+                          Blocking
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="mt-1 text-[11px] text-[#8b8d88]">
+                      {template.matter}
+                      {template.nextRunAt
+                        ? ` · next ${new Date(template.nextRunAt).toLocaleDateString()}`
+                        : " · ready to materialize"}
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <select
+                        value={templateTargets[template.id] ?? ""}
+                        onChange={(event) =>
+                          setTemplateTargets((current) => ({
+                            ...current,
+                            [template.id]: event.target.value,
+                          }))
+                        }
+                        className="h-8 min-w-0 flex-1 rounded-lg border border-[#ded9d0] bg-white px-2 text-[11px] text-[#4d5851]"
+                      >
+                        <option value="">Choose appointment…</option>
+                        {appointments
+                          .filter(
+                            (appointment) =>
+                              appointment.matterId === template.matterId
+                          )
+                          .map((appointment) => (
+                            <option key={appointment.id} value={appointment.id}>
+                              {appointment.title} ·{" "}
+                              {new Date(
+                                appointment.startsAt
+                              ).toLocaleDateString()}
+                            </option>
+                          ))}
+                      </select>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={
+                          !templateTargets[template.id] ||
+                          saving === `template-${template.id}`
+                        }
+                        onClick={() => {
+                          begin(`template-${template.id}`)
+                          void materializeTaskTemplateAction({
+                            matterId: template.matterId,
+                            templateId: template.id,
+                            appointmentId: templateTargets[template.id],
+                          }).then(finish)
+                        }}
+                        className="border-[#ded9d0] text-[#a24f31]"
+                      >
+                        Add to appointment
+                      </Button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <Empty icon={Clock3} text="No recurring task templates yet." />
+              )}
+            </div>
+          </Panel>
 
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]"><Panel icon={Link2} title="Calendar connections" eyebrow="Google + Outlook" description="The connection model is ready and the existing .ics export remains available. OAuth credentials are intentionally required before any provider account can be connected or synced."><div className="grid gap-3 sm:grid-cols-2">{(["google", "outlook"] as const).map((provider) => { const connection = connections.find((item) => item.provider === provider); const ready = provider === "google" ? Boolean(process.env.NEXT_PUBLIC_GOOGLE_CALENDAR_READY) : Boolean(process.env.NEXT_PUBLIC_OUTLOOK_CALENDAR_READY); return <div key={provider} className="rounded-xl border border-[#e8e3da] bg-white p-4"><div className="flex items-center justify-between"><p className="font-semibold capitalize text-[#39443f]">{provider === "google" ? "Google Calendar" : "Outlook Calendar"}</p><span className={cn("rounded-full px-2 py-1 text-[10px] font-bold", connection?.status === "connected" ? "bg-emerald-50 text-emerald-700" : "bg-[#f1eee8] text-[#737872]")}>{connection?.status ?? "Not connected"}</span></div><p className="mt-2 text-xs leading-5 text-[#737872]">{connection?.email ?? (ready ? "OAuth ready" : "Provider credentials needed")}</p><Button size="sm" onClick={() => void connect(provider)} disabled={saving === provider || !ready} className="mt-4 w-full bg-[#23313d] hover:bg-[#18242e]">{saving === provider ? "Starting…" : ready ? "Connect account" : "Configure provider first"}<Link2 /></Button></div> })}</div><a href="/api/matterpilot/calendar" className="mt-4 inline-flex items-center gap-2 text-xs font-semibold text-[#a24f31] hover:underline">Download .ics calendar while sync is configured <CalendarDays className="size-3.5" /></a></Panel><Panel icon={Receipt} title="Time & billing" eyebrow="Operational foundation" description="Record billable time and turn submitted entries into draft invoices. Payment processing is intentionally not represented as complete until a billing provider is connected."><div className="grid gap-2 sm:grid-cols-2"><Select label="Matter" value={timeMatter} onChange={(value) => { setTimeMatter(value); setInvoiceMatter(value) }} options={matters.map((matter) => [matter.id, matter.name])} /><label className="text-[11px] font-semibold text-[#737872]">Work performed<Input value={timeDescription} onChange={(event) => setTimeDescription(event.target.value)} placeholder="Review discovery responses" /></label><label className="text-[11px] font-semibold text-[#737872]">Minutes<input type="number" min="1" value={timeMinutes} onChange={(event) => setTimeMinutes(event.target.value)} /></label><label className="text-[11px] font-semibold text-[#737872]">Hourly rate<input type="number" min="0" value={timeRate} onChange={(event) => setTimeRate(event.target.value)} /></label></div><Button onClick={() => void saveTime()} disabled={saving === "time" || !timeDescription.trim()} className="mt-3 bg-[#a24f31] hover:bg-[#8f432a]">{saving === "time" ? "Saving…" : "Record time"}<Clock3 /></Button><div className="mt-5 space-y-2">{timeEntries.filter((entry) => entry.status === "submitted").slice(0, 8).map((entry) => <label key={entry.id} className="flex items-center gap-3 rounded-xl border border-[#e8e3da] bg-white p-3 text-xs"><input type="checkbox" checked={selectedEntries.includes(entry.id)} onChange={(event) => setSelectedEntries((current) => event.target.checked ? [...current, entry.id] : current.filter((id) => id !== entry.id))} className="size-4 accent-[#a24f31]" /><span className="min-w-0 flex-1"><span className="block truncate font-semibold text-[#39443f]">{entry.description}</span><span className="mt-1 block text-[#8b8d88]">{entry.matter} · {entry.durationMinutes} min · ${(entry.rateCents / 100).toFixed(2)}/hr</span></span></label>)}<div className="flex flex-wrap gap-2"><Input value={invoiceNumber} onChange={(event) => setInvoiceNumber(event.target.value)} placeholder="Invoice number" className="max-w-40" /><Button size="sm" variant="outline" disabled={saving === "invoice" || !invoiceNumber.trim() || !selectedEntries.length} onClick={() => void createInvoice()} className="border-[#ded9d0] text-[#a24f31]">Draft invoice from selected <Receipt /></Button></div></div><div className="mt-4 border-t border-[#eee9e2] pt-4">{invoices.length ? invoices.slice(0, 6).map((invoice) => <div key={invoice.id} className="flex items-center justify-between gap-3 py-2 text-xs"><span className="font-semibold text-[#39443f]">{invoice.invoiceNumber} · {invoice.matter}</span><span className="text-[#8b8d88]">${(invoice.subtotalCents / 100).toFixed(2)} · {invoice.status}</span></div>) : <p className="text-xs text-[#8b8d88]">No invoices drafted yet.</p>}</div></Panel></section>
+          <Panel
+            id="notifications"
+            icon={Bell}
+            title="Notifications"
+            eyebrow="Attention queue"
+            description="Overdue tasks and deadlines are now refreshed automatically every hour. Use the manual refresh when you need the queue immediately."
+          >
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <p className="text-xs text-[#8b8d88]">
+                Scheduled refresh is active.
+              </p>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  begin("notifications")
+                  void refreshNotificationQueueAction().then(finish)
+                }}
+                disabled={saving === "notifications"}
+                className="border-[#ded9d0] text-[#a24f31]"
+              >
+                {saving === "notifications" ? "Refreshing…" : "Refresh now"}
+                <Bell />
+              </Button>
+            </div>
+            <div className="space-y-2">
+              {notifications.length ? (
+                notifications.slice(0, 12).map((notification) => (
+                  <div
+                    key={notification.id}
+                    className={cn(
+                      "rounded-xl border p-3",
+                      notification.readAt
+                        ? "border-[#eee9e2] bg-white/60"
+                        : "border-[#eadbd0] bg-white"
+                    )}
+                  >
+                    <div className="flex items-start gap-3">
+                      <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#f4e5db] text-[#a24f31]">
+                        <Bell className="size-4" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-[#39443f]">
+                          {notification.title}
+                        </p>
+                        <p className="mt-1 text-xs leading-5 text-[#737872]">
+                          {notification.body}
+                        </p>
+                        <p className="mt-1 text-[10px] text-[#a1a39d]">
+                          {notification.matter} ·{" "}
+                          {new Date(notification.createdAt).toLocaleString()}
+                        </p>
+                      </div>
+                      {!notification.readAt ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            begin(`notification-${notification.id}`)
+                            void markNotificationReadAction({
+                              notificationId: notification.id,
+                              matterId: notification.matterId,
+                            }).then(finish)
+                          }}
+                          className="shrink-0 px-2 text-[10px] text-[#a24f31]"
+                        >
+                          Mark read
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <Empty
+                  icon={Bell}
+                  text="No notifications yet. New deadline and workflow events will appear here."
+                />
+              )}
+            </div>
+          </Panel>
+        </section>
 
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]"><Panel icon={Activity} title="Matter activity" eyebrow="Audit-aware timeline" description="A working timeline of changes across scheduling, deadlines, portal work, billing, and intelligence. Audit records remain the source of truth."><div className="space-y-2">{activity.length ? activity.slice(0, 18).map((entry) => <div key={entry.id} className="flex gap-3 border-b border-[#eee9e2] pb-3 last:border-0"><span className="mt-1 size-2 shrink-0 rounded-full bg-[#b65f3a]" /><div className="min-w-0"><p className="text-xs font-semibold text-[#39443f]">{entry.summary}</p><p className="mt-1 text-[10px] text-[#8b8d88]">{entry.matter} · {entry.entityType} · {new Date(entry.createdAt).toLocaleString()}</p></div></div>) : <Empty icon={Activity} text="No activity has been recorded yet." />}</div></Panel><Panel icon={Sparkles} title="AI assistance" eyebrow="Drafts, not decisions" description={aiConfigured ? "Generate matter briefs and operational scans from structured records. Every output is saved as a draft for human review." : "AI assistance is ready in the interface, but OPENAI_API_KEY is not configured in this environment."}><div className="space-y-2">{matters.slice(0, 8).map((matter) => <div key={matter.id} className="flex items-center gap-3 rounded-xl border border-[#e8e3da] bg-white p-3"><span className="flex size-8 items-center justify-center rounded-lg bg-[#e8eef0] text-[#385367]"><Sparkles className="size-4" /></span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-[#39443f]">{matter.name}</span><span className="block truncate text-[10px] text-[#8b8d88]">{matter.matter_number}</span></span><Button size="sm" variant="outline" disabled={!aiConfigured || saving === `ai-${matter.id}`} onClick={() => void generateInsight(matter.id)} className="border-[#ded9d0] px-2 text-[10px] text-[#385367]">{saving === `ai-${matter.id}` ? "Drafting…" : "Draft brief"}<WandSparkles /></Button></div>)}{aiRuns.slice(0, 3).map((run) => <article key={run.id} className="rounded-xl border border-[#c8d8dc] bg-[#f7fbfc] p-3"><div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold text-[#385367]">{run.matter} · {run.runType.replaceAll("_", " ")}</p><span className="rounded-full bg-white px-2 py-1 text-[10px] font-bold text-[#385367]">{run.status}</span></div>{run.output?.headline ? <p className="mt-2 text-xs font-semibold text-[#39443f]">{run.output.headline}</p> : null}{run.output?.summary ? <p className="mt-1 text-xs leading-5 text-[#63747a]">{run.output.summary}</p> : null}{run.status === "draft" ? <div className="mt-3 flex gap-2"><Button size="sm" onClick={() => { begin(`approve-${run.id}`); void reviewAiInsightAction({ matterId: run.matterId, runId: run.id, status: "approved" }).then(finish) }} className="bg-[#385367] hover:bg-[#294351]">Approve draft</Button><Button size="sm" variant="outline" onClick={() => { begin(`reject-${run.id}`); void reviewAiInsightAction({ matterId: run.matterId, runId: run.id, status: "rejected" }).then(finish) }} className="border-[#c8d8dc] text-[#385367]">Reject</Button></div> : null}</article>)}</div></Panel></section>
+        <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
+          <Panel
+            icon={Gavel}
+            title="Court-rule calculations"
+            eyebrow="Deadline engine"
+            description="Save reusable jurisdiction rules and calculate a proposed due date from a trigger. Every result shows the rule and trigger used so a human can verify it."
+          >
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="text-[11px] font-semibold text-[#737872]">
+                Rule name
+                <Input
+                  value={ruleName}
+                  onChange={(event) => setRuleName(event.target.value)}
+                  placeholder="State response deadline"
+                />
+              </label>
+              <label className="text-[11px] font-semibold text-[#737872]">
+                Jurisdiction
+                <Input
+                  value={ruleJurisdiction}
+                  onChange={(event) => setRuleJurisdiction(event.target.value)}
+                  placeholder="State · County"
+                />
+              </label>
+              <label className="text-[11px] font-semibold text-[#737872]">
+                Offset days
+                <input
+                  type="number"
+                  value={ruleOffset}
+                  onChange={(event) => setRuleOffset(event.target.value)}
+                />
+              </label>
+              <label className="flex items-center gap-2 self-end pb-2 text-xs font-semibold text-[#4d5851]">
+                <input
+                  type="checkbox"
+                  checked={ruleBusinessDays}
+                  onChange={(event) =>
+                    setRuleBusinessDays(event.target.checked)
+                  }
+                  className="size-4 accent-[#a24f31]"
+                />
+                Business days
+              </label>
+            </div>
+            <Button
+              onClick={() => void saveRule()}
+              disabled={
+                saving === "rule" ||
+                !ruleName.trim() ||
+                !ruleJurisdiction.trim()
+              }
+              className="mt-3 bg-[#23313d] hover:bg-[#18242e]"
+            >
+              {saving === "rule" ? "Saving…" : "Save rule"}
+              <Plus />
+            </Button>
+            <div className="mt-5 space-y-2">
+              {rules.length ? (
+                rules.map((rule) => (
+                  <div
+                    key={rule.id}
+                    className="rounded-xl border border-[#e8e3da] bg-white p-3"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-[#39443f]">
+                        {rule.name}
+                      </p>
+                      <span className="rounded-full bg-[#e8eef0] px-2 py-1 text-[10px] font-bold text-[#385367]">
+                        {rule.offsetDays >= 0
+                          ? `+${rule.offsetDays}`
+                          : rule.offsetDays}{" "}
+                        {rule.businessDays ? "business" : "calendar"} days
+                      </span>
+                    </div>
+                    <p className="mt-1 text-[11px] text-[#8b8d88]">
+                      {rule.jurisdiction} · trigger:{" "}
+                      {rule.triggerKind.replace("_", " ")}
+                    </p>
+                  </div>
+                ))
+              ) : (
+                <Empty
+                  icon={Gavel}
+                  text="No court rules saved. Add the rules your firm verifies most often."
+                />
+              )}
+            </div>
+          </Panel>
+          <Panel
+            icon={CalendarDays}
+            title="Calculate a deadline"
+            eyebrow="Human verification required"
+            description="Use a saved rule as a calculation aid. MatterPilot never treats a calculated date as legal advice or a final filing instruction."
+          >
+            <div className="space-y-2">
+              <Select
+                label="Matter"
+                value={deadlineMatter}
+                onChange={setDeadlineMatter}
+                options={matters.map((matter) => [matter.id, matter.name])}
+              />
+              <Select
+                label="Court rule"
+                value={deadlineRule}
+                onChange={setDeadlineRule}
+                options={rules.map((rule) => [
+                  rule.id,
+                  `${rule.name} · ${rule.jurisdiction}`,
+                ])}
+              />
+              <label className="text-[11px] font-semibold text-[#737872]">
+                Deadline title
+                <Input
+                  value={deadlineTitle}
+                  onChange={(event) => setDeadlineTitle(event.target.value)}
+                  placeholder="Response due"
+                />
+              </label>
+              <label className="text-[11px] font-semibold text-[#737872]">
+                Trigger date and time
+                <Input
+                  type="datetime-local"
+                  value={deadlineTrigger}
+                  onChange={(event) => setDeadlineTrigger(event.target.value)}
+                />
+              </label>
+            </div>
+            <Button
+              onClick={() => void calculateDeadline()}
+              disabled={
+                saving === "deadline" ||
+                !deadlineMatter ||
+                !deadlineRule ||
+                !deadlineTitle.trim() ||
+                !deadlineTrigger
+              }
+              className="mt-3 w-full bg-[#a24f31] hover:bg-[#8f432a]"
+            >
+              {saving === "deadline"
+                ? "Calculating…"
+                : "Calculate and add deadline"}
+              <CalendarDays />
+            </Button>
+          </Panel>
+        </section>
 
-      <section className="rounded-2xl border border-[#ded9d0] bg-[#fbfaf7] p-5 shadow-sm sm:p-6"><div className="flex items-center gap-2"><FileText className="size-4 text-[#a24f31]" /><h2 className="font-serif text-xl font-semibold text-[#23313d]">Reporting workbench</h2></div><p className="mt-1 text-xs leading-5 text-[#8b8d88]">Open the matter report catalog for evidence matrices, witness contradictions, and the next derived report slices.</p><div className="mt-4 flex flex-wrap gap-2">{matters.slice(0, 6).map((matter) => <Link key={matter.id} href={`/matters/${matter.id}/reports`} className="inline-flex items-center gap-2 rounded-lg border border-[#ded9d0] bg-white px-3 py-2 text-xs font-semibold text-[#a24f31] hover:border-[#c08a6d]">{matter.name}<FileText className="size-3.5" /></Link>)}</div></section>
-    </div></div>
+        <section className="grid gap-6 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+          <Panel
+            icon={Link2}
+            title="Calendar connections"
+            eyebrow="Google + Outlook"
+            description="Choose a matter, authorize a provider, and push only that matter’s appointment title, time, location, and workflow status. Client names and private notes stay in MatterPilot."
+          >
+            <div className="mb-4 rounded-xl border border-[#e8e3da] bg-[#f1eee8] p-3">
+              <Select
+                label="Matter to sync"
+                value={calendarMatter}
+                onChange={setCalendarMatter}
+                options={matters.map((matter) => [matter.id, matter.name])}
+              />
+              <p className="mt-2 text-[11px] leading-5 text-[#737872]">
+                Sync is one-way and matter-specific. External events are private by default.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {(["google", "outlook"] as const).map((provider) => {
+                const connection = connections.find(
+                  (item) =>
+                    item.provider === provider && item.matterId === calendarMatter
+                )
+                const ready = calendarReady[provider]
+                return (
+                  <div
+                    key={provider}
+                    className="rounded-xl border border-[#e8e3da] bg-white p-4"
+                  >
+                    <div className="flex items-center justify-between">
+                      <p className="font-semibold text-[#39443f] capitalize">
+                        {provider === "google"
+                          ? "Google Calendar"
+                          : "Outlook Calendar"}
+                      </p>
+                      <span
+                        className={cn(
+                          "rounded-full px-2 py-1 text-[10px] font-bold",
+                          connection?.status === "connected"
+                            ? "bg-emerald-50 text-emerald-700"
+                            : "bg-[#f1eee8] text-[#737872]"
+                        )}
+                      >
+                        {connection?.status ?? "Not connected"}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xs leading-5 text-[#737872]">
+                      {connection?.email
+                        ? `${connection.email} · ${connection.calendarName ?? "Calendar"}`
+                        : ready
+                          ? "OAuth ready"
+                          : "Provider credentials needed"}
+                    </p>
+                    {connection?.lastSyncAt ? <p className="mt-1 text-[10px] text-[#a1a39d]">Last sync {new Date(connection.lastSyncAt).toLocaleString()}</p> : null}
+                    {connection?.errorMessage ? <p className="mt-1 text-[10px] text-rose-700">{connection.errorMessage}</p> : null}
+                    <Button
+                      size="sm"
+                      onClick={() => connection?.status === "connected" ? void sync(connection.id) : void connect(provider, calendarMatter)}
+                      disabled={saving === `${provider}-${calendarMatter}` || saving === `sync-${connection?.id}` || !ready || !calendarMatter}
+                      className="mt-4 w-full bg-[#23313d] hover:bg-[#18242e]"
+                    >
+                      {saving === `${provider}-${calendarMatter}` || saving === `sync-${connection?.id}`
+                        ? "Working…"
+                        : !ready
+                          ? "Configure provider first"
+                          : connection?.status === "connected"
+                            ? "Sync this matter"
+                            : "Connect account"}
+                      {connection?.status === "connected" ? <CalendarDays /> : <Link2 />}
+                    </Button>
+                  </div>
+                )
+              })}
+            </div>
+            <a
+              href="/api/matterpilot/calendar"
+              className="mt-4 inline-flex items-center gap-2 text-xs font-semibold text-[#a24f31] hover:underline"
+            >
+              Download .ics calendar while sync is configured{" "}
+              <CalendarDays className="size-3.5" />
+            </a>
+          </Panel>
+          <Panel
+            icon={Receipt}
+            title="Time & billing"
+            eyebrow="Operational foundation"
+            description="Record billable time and turn submitted entries into draft invoices. Payment processing is intentionally not represented as complete until a billing provider is connected."
+          >
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Select
+                label="Matter"
+                value={timeMatter}
+                onChange={(value) => {
+                  setTimeMatter(value)
+                  setInvoiceMatter(value)
+                }}
+                options={matters.map((matter) => [matter.id, matter.name])}
+              />
+              <label className="text-[11px] font-semibold text-[#737872]">
+                Work performed
+                <Input
+                  value={timeDescription}
+                  onChange={(event) => setTimeDescription(event.target.value)}
+                  placeholder="Review discovery responses"
+                />
+              </label>
+              <label className="text-[11px] font-semibold text-[#737872]">
+                Minutes
+                <input
+                  type="number"
+                  min="1"
+                  value={timeMinutes}
+                  onChange={(event) => setTimeMinutes(event.target.value)}
+                />
+              </label>
+              <label className="text-[11px] font-semibold text-[#737872]">
+                Hourly rate
+                <input
+                  type="number"
+                  min="0"
+                  value={timeRate}
+                  onChange={(event) => setTimeRate(event.target.value)}
+                />
+              </label>
+            </div>
+            <Button
+              onClick={() => void saveTime()}
+              disabled={saving === "time" || !timeDescription.trim()}
+              className="mt-3 bg-[#a24f31] hover:bg-[#8f432a]"
+            >
+              {saving === "time" ? "Saving…" : "Record time"}
+              <Clock3 />
+            </Button>
+            <div className="mt-5 space-y-2">
+              {timeEntries
+                .filter((entry) => entry.status === "submitted")
+                .slice(0, 8)
+                .map((entry) => (
+                  <label
+                    key={entry.id}
+                    className="flex items-center gap-3 rounded-xl border border-[#e8e3da] bg-white p-3 text-xs"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedEntries.includes(entry.id)}
+                      onChange={(event) =>
+                        setSelectedEntries((current) =>
+                          event.target.checked
+                            ? [...current, entry.id]
+                            : current.filter((id) => id !== entry.id)
+                        )
+                      }
+                      className="size-4 accent-[#a24f31]"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-semibold text-[#39443f]">
+                        {entry.description}
+                      </span>
+                      <span className="mt-1 block text-[#8b8d88]">
+                        {entry.matter} · {entry.durationMinutes} min · $
+                        {(entry.rateCents / 100).toFixed(2)}/hr
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              <div className="flex flex-wrap gap-2">
+                <Input
+                  value={invoiceNumber}
+                  onChange={(event) => setInvoiceNumber(event.target.value)}
+                  placeholder="Invoice number"
+                  className="max-w-40"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={
+                    saving === "invoice" ||
+                    !invoiceNumber.trim() ||
+                    !selectedEntries.length
+                  }
+                  onClick={() => void createInvoice()}
+                  className="border-[#ded9d0] text-[#a24f31]"
+                >
+                  Draft invoice from selected <Receipt />
+                </Button>
+              </div>
+            </div>
+            <div className="mt-4 border-t border-[#eee9e2] pt-4">
+              {invoices.length ? (
+                invoices.slice(0, 6).map((invoice) => (
+                  <div
+                    key={invoice.id}
+                    className="flex items-center justify-between gap-3 py-2 text-xs"
+                  >
+                    <span className="font-semibold text-[#39443f]">
+                      {invoice.invoiceNumber} · {invoice.matter}
+                    </span>
+                    <span className="text-[#8b8d88]">
+                      ${(invoice.subtotalCents / 100).toFixed(2)} ·{" "}
+                      {invoice.status}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <p className="text-xs text-[#8b8d88]">
+                  No invoices drafted yet.
+                </p>
+              )}
+            </div>
+          </Panel>
+        </section>
+
+        <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
+          <Panel
+            icon={Activity}
+            title="Matter activity"
+            eyebrow="Audit-aware timeline"
+            description="A working timeline of changes across scheduling, deadlines, portal work, billing, and intelligence. Audit records remain the source of truth."
+          >
+            <div className="space-y-2">
+              {activity.length ? (
+                activity.slice(0, 18).map((entry) => (
+                  <div
+                    key={entry.id}
+                    className="flex gap-3 border-b border-[#eee9e2] pb-3 last:border-0"
+                  >
+                    <span className="mt-1 size-2 shrink-0 rounded-full bg-[#b65f3a]" />
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-[#39443f]">
+                        {entry.summary}
+                      </p>
+                      <p className="mt-1 text-[10px] text-[#8b8d88]">
+                        {entry.matter} · {entry.entityType} ·{" "}
+                        {new Date(entry.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <Empty
+                  icon={Activity}
+                  text="No activity has been recorded yet."
+                />
+              )}
+            </div>
+          </Panel>
+          <Panel
+            icon={Sparkles}
+            title="AI assistance"
+            eyebrow="Drafts, not decisions"
+            description={
+              aiConfigured
+                ? "Generate matter briefs and operational scans from structured records. Every output is saved as a draft for human review."
+                : "AI assistance is ready in the interface, but OPENAI_API_KEY is not configured in this environment."
+            }
+          >
+            <div className="space-y-2">
+              {matters.slice(0, 8).map((matter) => (
+                <div
+                  key={matter.id}
+                  className="flex items-center gap-3 rounded-xl border border-[#e8e3da] bg-white p-3"
+                >
+                  <span className="flex size-8 items-center justify-center rounded-lg bg-[#e8eef0] text-[#385367]">
+                    <Sparkles className="size-4" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-xs font-semibold text-[#39443f]">
+                      {matter.name}
+                    </span>
+                    <span className="block truncate text-[10px] text-[#8b8d88]">
+                      {matter.matter_number}
+                    </span>
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={!aiConfigured || saving === `ai-${matter.id}`}
+                    onClick={() => void generateInsight(matter.id)}
+                    className="border-[#ded9d0] px-2 text-[10px] text-[#385367]"
+                  >
+                    {saving === `ai-${matter.id}` ? "Drafting…" : "Draft brief"}
+                    <WandSparkles />
+                  </Button>
+                </div>
+              ))}
+              {aiRuns.slice(0, 3).map((run) => (
+                <article
+                  key={run.id}
+                  className="rounded-xl border border-[#c8d8dc] bg-[#f7fbfc] p-3"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold text-[#385367]">
+                      {run.matter} · {run.runType.replaceAll("_", " ")}
+                    </p>
+                    <span className="rounded-full bg-white px-2 py-1 text-[10px] font-bold text-[#385367]">
+                      {run.status}
+                    </span>
+                  </div>
+                  {run.output?.headline ? (
+                    <p className="mt-2 text-xs font-semibold text-[#39443f]">
+                      {run.output.headline}
+                    </p>
+                  ) : null}
+                  {run.output?.summary ? (
+                    <p className="mt-1 text-xs leading-5 text-[#63747a]">
+                      {run.output.summary}
+                    </p>
+                  ) : null}
+                  {run.status === "draft" ? (
+                    <div className="mt-3 flex gap-2">
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          begin(`approve-${run.id}`)
+                          void reviewAiInsightAction({
+                            matterId: run.matterId,
+                            runId: run.id,
+                            status: "approved",
+                          }).then(finish)
+                        }}
+                        className="bg-[#385367] hover:bg-[#294351]"
+                      >
+                        Approve draft
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          begin(`reject-${run.id}`)
+                          void reviewAiInsightAction({
+                            matterId: run.matterId,
+                            runId: run.id,
+                            status: "rejected",
+                          }).then(finish)
+                        }}
+                        className="border-[#c8d8dc] text-[#385367]"
+                      >
+                        Reject
+                      </Button>
+                    </div>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+          </Panel>
+        </section>
+
+        <section className="rounded-2xl border border-[#ded9d0] bg-[#fbfaf7] p-5 shadow-sm sm:p-6">
+          <div className="flex items-center gap-2">
+            <FileText className="size-4 text-[#a24f31]" />
+            <h2 className="font-serif text-xl font-semibold text-[#23313d]">
+              Reporting workbench
+            </h2>
+          </div>
+          <p className="mt-1 text-xs leading-5 text-[#8b8d88]">
+            Open the matter report catalog for evidence matrices, witness
+            contradictions, and the next derived report slices.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {matters.slice(0, 6).map((matter) => (
+              <Link
+                key={matter.id}
+                href={`/matters/${matter.id}/reports`}
+                className="inline-flex items-center gap-2 rounded-lg border border-[#ded9d0] bg-white px-3 py-2 text-xs font-semibold text-[#a24f31] hover:border-[#c08a6d]"
+              >
+                {matter.name}
+                <FileText className="size-3.5" />
+              </Link>
+            ))}
+          </div>
+        </section>
+      </div>
+    </div>
+  )
 }
 
-function Metric({ icon: Icon, label, value }: { icon: typeof Clock3; label: string; value: string }) { return <div className="rounded-xl border border-[#ded9d0] bg-[#fbfaf7] p-4"><div className="flex items-center gap-2 text-xs font-semibold text-[#737872]"><Icon className="size-4 text-[#a24f31]" />{label}</div><p className="mt-3 text-2xl font-semibold text-[#23313d]">{value}</p></div> }
+function Metric({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: typeof Clock3
+  label: string
+  value: string
+}) {
+  return (
+    <div className="rounded-xl border border-[#ded9d0] bg-[#fbfaf7] p-4">
+      <div className="flex items-center gap-2 text-xs font-semibold text-[#737872]">
+        <Icon className="size-4 text-[#a24f31]" />
+        {label}
+      </div>
+      <p className="mt-3 text-2xl font-semibold text-[#23313d]">{value}</p>
+    </div>
+  )
+}
 
-function Panel({ id, icon: Icon, title, eyebrow, description, children }: { id?: string; icon: typeof Clock3; title: string; eyebrow: string; description: string; children: React.ReactNode }) { return <section id={id} className="scroll-mt-6 rounded-2xl border border-[#ded9d0] bg-[#fbfaf7] p-5 shadow-sm sm:p-6"><div className="flex items-start gap-3 border-b border-[#e8e3da] pb-4"><span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#f4e5db] text-[#a24f31]"><Icon className="size-4" /></span><div><p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#b65f3a]">{eyebrow}</p><h2 className="mt-1 font-serif text-xl font-semibold text-[#23313d]">{title}</h2><p className="mt-1 max-w-xl text-xs leading-5 text-[#8b8d88]">{description}</p></div></div><div className="pt-5">{children}</div></section> }
+function Panel({
+  id,
+  icon: Icon,
+  title,
+  eyebrow,
+  description,
+  children,
+}: {
+  id?: string
+  icon: typeof Clock3
+  title: string
+  eyebrow: string
+  description: string
+  children: React.ReactNode
+}) {
+  return (
+    <section
+      id={id}
+      className="scroll-mt-6 rounded-2xl border border-[#ded9d0] bg-[#fbfaf7] p-5 shadow-sm sm:p-6"
+    >
+      <div className="flex items-start gap-3 border-b border-[#e8e3da] pb-4">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#f4e5db] text-[#a24f31]">
+          <Icon className="size-4" />
+        </span>
+        <div>
+          <p className="text-[10px] font-bold tracking-[0.15em] text-[#b65f3a] uppercase">
+            {eyebrow}
+          </p>
+          <h2 className="mt-1 font-serif text-xl font-semibold text-[#23313d]">
+            {title}
+          </h2>
+          <p className="mt-1 max-w-xl text-xs leading-5 text-[#8b8d88]">
+            {description}
+          </p>
+        </div>
+      </div>
+      <div className="pt-5">{children}</div>
+    </section>
+  )
+}
 
-function Select({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: [string, string][] }) { return <label className="text-[11px] font-semibold text-[#737872]">{label}<select value={value} onChange={(event) => onChange(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-[#ded9d0] bg-white px-3 text-sm font-normal text-[#39443f]"><option value="">Choose…</option>{options.map(([optionValue, optionLabel]) => <option key={optionValue} value={optionValue}>{optionLabel}</option>)}</select></label> }
+function Select({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  options: [string, string][]
+}) {
+  return (
+    <label className="text-[11px] font-semibold text-[#737872]">
+      {label}
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-1 h-10 w-full rounded-lg border border-[#ded9d0] bg-white px-3 text-sm font-normal text-[#39443f]"
+      >
+        <option value="">Choose…</option>
+        {options.map(([optionValue, optionLabel]) => (
+          <option key={optionValue} value={optionValue}>
+            {optionLabel}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
 
-function Empty({ icon: Icon, text }: { icon: typeof Clock3; text: string }) { return <div className="rounded-xl border border-dashed border-[#d9d3c9] bg-white/70 px-4 py-6 text-center"><Icon className="mx-auto size-5 text-[#c8b6a8]" /><p className="mt-2 text-xs text-[#8b8d88]">{text}</p></div> }
+function Empty({ icon: Icon, text }: { icon: typeof Clock3; text: string }) {
+  return (
+    <div className="rounded-xl border border-dashed border-[#d9d3c9] bg-white/70 px-4 py-6 text-center">
+      <Icon className="mx-auto size-5 text-[#c8b6a8]" />
+      <p className="mt-2 text-xs text-[#8b8d88]">{text}</p>
+    </div>
+  )
+}

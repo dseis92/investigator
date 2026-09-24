@@ -47,6 +47,7 @@ This is the ordered product plan for continuing the current build. Completed wor
 - [x] Add conflict-safe staff rescheduling with an appointment history record.
 - [x] Add recurring appointments and a firm-wide appointment series model.
 - [ ] Add Google Calendar and Outlook synchronization.
+- OAuth connection and selected-matter, one-way sync foundation is implemented; provider credentials and live authorization remain required before this item is marked complete.
 - [x] Improve overlap handling with database-backed checks for new appointments, public requests, blocked windows, and reschedules.
 - [x] Add richer readiness filters and conflict-aware calendar movement.
 

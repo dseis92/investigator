@@ -30,6 +30,7 @@ Every matter is isolated, every substantive report is derived from recorded matt
 - New-client scheduling before a matter exists, with the option to attach or create the matter later.
 - Appointment workflow states, conflict checks, availability windows, time zones, blackout windows, overlap protection, staff rescheduling, and appointment movement history.
 - Recurring appointment series and firm-wide appointment scheduling.
+- Provider-ready Google Calendar and Outlook OAuth connections with explicit matter selection and one-way appointment push. External events contain only title, date/time, location, and workflow status; client names and private notes remain in MatterPilot. Provider credentials must be configured and a live provider authorization completed before this is active in production.
 - Readiness pipeline that moves appointments from blocked or tentative states through preparation and ready-to-meet states.
 - Preparation tasks with owners, dependencies, due dates, priority, completion states, and workload/team assignment views.
 - Recurring task templates, notification queue, court-rule calculations, and scheduled operations for recurring tasks and notifications.
@@ -157,6 +158,9 @@ Fill `.env.local` from [.env.example](.env.example). The required runtime values
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY` for the seed script and live security tests
 - `CRON_SECRET` for scheduled operations
+- `NEXT_PUBLIC_SITE_URL` for OAuth callback URLs
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, and optional `MICROSOFT_TENANT_ID` for calendar providers
+- `CALENDAR_TOKEN_ENCRYPTION_KEY` for encrypting server-side OAuth tokens
 - `OPENAI_API_KEY` and `OPENAI_MODEL` when optional AI workflows are enabled
 
 Never commit `.env.local`, service-role keys, OpenAI keys, cron secrets, or any other secret value.
@@ -244,6 +248,7 @@ This README, `ROADMAP.md`, the migration history, and the GitHub commit history 
 The current build is a strong working MVP, but these areas remain intentionally open:
 
 - Google Calendar and Outlook synchronization.
+- Production provider registration and live end-to-end verification for the calendar OAuth/sync slice.
 - Production transactional email delivery for queued reminders and communications.
 - Error monitoring, structured request logging, and automated deployment smoke checks.
 - Firm settings, reusable firm templates, more granular roles, retention policies, and export controls.
