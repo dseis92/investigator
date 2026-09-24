@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 
-import { MatterPilotDashboard, type Appointment, type DashboardCommunication, type DashboardContact, type DashboardDeadline, type DashboardPortalDocumentRequest } from "@/components/matterpilot/dashboard"
+import { MatterPilotDashboard, type Appointment, type DashboardCommunication, type DashboardContact, type DashboardDeadline, type DashboardMember, type DashboardPortalDocumentRequest, type DashboardTask } from "@/components/matterpilot/dashboard"
 import { getDocumentTemplate } from "@/lib/matterpilot/documents"
 import { getWorkflow } from "@/lib/matterpilot/workflows"
 import { createClient } from "@/lib/supabase/server"
@@ -59,7 +59,7 @@ export default async function MatterPilotPage() {
   const appointmentIds = (appointments ?? []).map((appointment) => appointment.id)
   const [{ data: tasks }, { data: documents }, { data: participants }, { data: packets }, { data: communications }] = appointmentIds.length
     ? await Promise.all([
-        supabase.from("appointment_tasks").select("id, appointment_id, label, status, is_blocking").in("appointment_id", appointmentIds),
+        supabase.from("appointment_tasks").select("id, matter_id, appointment_id, label, status, is_blocking, due_at, assigned_to").in("appointment_id", appointmentIds),
         supabase.from("appointment_documents").select("id, appointment_id, name, status, is_required").in("appointment_id", appointmentIds),
         supabase.from("appointment_participants").select("id, appointment_id, display_name, response_status, is_required").in("appointment_id", appointmentIds),
         supabase.from("appointment_packets").select("id, appointment_id, status, expires_at, viewed_at, completed_at").in("appointment_id", appointmentIds),
@@ -87,8 +87,41 @@ export default async function MatterPilotPage() {
   const { data: packetReminders } = packetIds.length
     ? await supabase.from("appointment_packet_reminders").select("id, packet_id, kind, send_at, status").in("packet_id", packetIds)
     : { data: [] }
+  const taskIds = (tasks ?? []).map((task) => task.id)
+  const [{ data: taskDependencies }, { data: matterMembers }, { data: profiles }] = await Promise.all([
+    taskIds.length ? supabase.from("appointment_task_dependencies").select("id, matter_id, task_id, depends_on_task_id").in("task_id", taskIds) : Promise.resolve({ data: [] }),
+    matterIds.length ? supabase.from("matter_members").select("matter_id, user_id, role").in("matter_id", matterIds) : Promise.resolve({ data: [] }),
+    supabase.from("profiles").select("id, full_name, email").limit(200),
+  ])
 
   const matterNames = new Map(matterRows.map((matter) => [matter.id, matter.name]))
+  const taskById = new Map((tasks ?? []).map((task) => [task.id, task]))
+  const profileById = new Map((profiles ?? []).map((profile) => [profile.id, profile]))
+  const initialTaskMembers: DashboardMember[] = (matterMembers ?? []).map((member) => {
+    const profile = profileById.get(member.user_id)
+    return { userId: member.user_id, name: profile?.full_name || profile?.email || "Team member", email: profile?.email || "", role: member.role }
+  }).filter((member, index, all) => all.findIndex((item) => item.userId === member.userId) === index)
+  const initialTasks: DashboardTask[] = (tasks ?? []).map((task) => {
+    const appointment = (appointments ?? []).find((item) => item.id === task.appointment_id)
+    const assignedProfile = task.assigned_to ? profileById.get(task.assigned_to) : null
+    return {
+      id: task.id,
+      matterId: task.matter_id,
+      matter: matterNames.get(task.matter_id) ?? "Matter",
+      appointmentId: task.appointment_id,
+      appointment: appointment?.title ?? "Appointment",
+      label: task.label,
+      status: task.status as DashboardTask["status"],
+      isBlocking: task.is_blocking,
+      dueAt: task.due_at,
+      assignedTo: task.assigned_to,
+      assignedName: assignedProfile?.full_name || assignedProfile?.email || "Unassigned",
+      dependencies: (taskDependencies ?? []).filter((dependency) => dependency.task_id === task.id).map((dependency) => {
+        const dependsOn = taskById.get(dependency.depends_on_task_id)
+        return { id: dependency.id, taskId: dependency.task_id, dependsOnTaskId: dependency.depends_on_task_id, dependsOnLabel: dependsOn?.label ?? "Task", dependsOnStatus: (dependsOn?.status ?? "open") as "open" | "done" | "waived" }
+      }),
+    }
+  })
   const initialAppointments: Appointment[] = (appointments ?? []).map((appointment) => {
     const start = new Date(appointment.starts_at)
     const end = new Date(appointment.ends_at)
@@ -233,7 +266,22 @@ export default async function MatterPilotPage() {
     }
   })
 
+  const contactDuplicateGroups = new Map<string, typeof contacts>()
+  for (const contact of contacts ?? []) {
+    const key = contact.email?.trim().toLowerCase() || contact.display_name.trim().toLowerCase()
+    if (!key) continue
+    const group = contactDuplicateGroups.get(key) ?? []
+    group.push(contact)
+    contactDuplicateGroups.set(key, group)
+  }
+
   const initialContacts: DashboardContact[] = (contacts ?? []).map((contact) => {
+    const duplicateKey = contact.email?.trim().toLowerCase() || contact.display_name.trim().toLowerCase()
+    const duplicateMatterNames = [...new Set(
+      (contactDuplicateGroups.get(duplicateKey) ?? [])
+        .filter((candidate) => candidate.id !== contact.id && candidate.matter_id !== contact.matter_id)
+        .map((candidate) => matterNames.get(candidate.matter_id) ?? "Another matter"),
+    )]
     const appointmentCount = (appointments ?? []).filter((appointment) => {
       if (appointment.matter_id !== contact.matter_id) return false
       const participantMatch = (participants ?? []).some((participant) => participant.appointment_id === appointment.id && participant.display_name.toLowerCase() === contact.display_name.toLowerCase())
@@ -252,8 +300,9 @@ export default async function MatterPilotPage() {
       status: contact.status as "active" | "archived",
       appointmentCount,
       openDeadlineCount,
+      duplicateMatterNames,
     }
   })
 
-  return <MatterPilotDashboard matters={matterRows} initialAppointments={[...initialAppointments, ...noteAppointments]} initialCommunications={initialCommunications} initialDeadlines={initialDeadlines} initialContacts={initialContacts} initialAvailabilityRules={(availabilityRules ?? []).map((rule) => ({ id: rule.id, matterId: rule.matter_id, weekday: rule.weekday, startTime: rule.start_time.slice(0, 5), endTime: rule.end_time.slice(0, 5), timezone: rule.timezone, label: rule.label }))} initialBlackouts={(calendarBlackouts ?? []).map((blackout) => ({ id: blackout.id, matterId: blackout.matter_id, startsAt: blackout.starts_at, endsAt: blackout.ends_at, reason: blackout.reason }))} initialPortalMessages={(portalMessages ?? []).map((message) => ({ id: message.id, matterId: message.matter_id, matter: matterNames.get(message.matter_id) ?? "Matter", senderRole: message.sender_role as "client" | "firm", senderEmail: message.sender_email, body: message.body, createdAt: message.created_at }))} initialPortalDocumentRequests={(portalDocumentRequests ?? []).map((request): DashboardPortalDocumentRequest => ({ id: request.id, matterId: request.matter_id, matter: matterNames.get(request.matter_id) ?? "Matter", appointmentId: request.appointment_id, title: request.title, description: request.description, status: request.status as DashboardPortalDocumentRequest["status"], fileName: request.file_name, mimeType: request.mime_type, sizeBytes: request.size_bytes, uploadedAt: request.uploaded_at, reviewerNote: request.reviewer_note, createdAt: request.created_at }))} userName="Maya" />
+  return <MatterPilotDashboard matters={matterRows} initialAppointments={[...initialAppointments, ...noteAppointments]} initialCommunications={initialCommunications} initialDeadlines={initialDeadlines} initialContacts={initialContacts} initialTasks={initialTasks} initialTaskMembers={initialTaskMembers} initialAvailabilityRules={(availabilityRules ?? []).map((rule) => ({ id: rule.id, matterId: rule.matter_id, weekday: rule.weekday, startTime: rule.start_time.slice(0, 5), endTime: rule.end_time.slice(0, 5), timezone: rule.timezone, label: rule.label }))} initialBlackouts={(calendarBlackouts ?? []).map((blackout) => ({ id: blackout.id, matterId: blackout.matter_id, startsAt: blackout.starts_at, endsAt: blackout.ends_at, reason: blackout.reason }))} initialPortalMessages={(portalMessages ?? []).map((message) => ({ id: message.id, matterId: message.matter_id, matter: matterNames.get(message.matter_id) ?? "Matter", senderRole: message.sender_role as "client" | "firm", senderEmail: message.sender_email, body: message.body, createdAt: message.created_at }))} initialPortalDocumentRequests={(portalDocumentRequests ?? []).map((request): DashboardPortalDocumentRequest => ({ id: request.id, matterId: request.matter_id, matter: matterNames.get(request.matter_id) ?? "Matter", appointmentId: request.appointment_id, title: request.title, description: request.description, status: request.status as DashboardPortalDocumentRequest["status"], fileName: request.file_name, mimeType: request.mime_type, sizeBytes: request.size_bytes, uploadedAt: request.uploaded_at, reviewerNote: request.reviewer_note, createdAt: request.created_at }))} userName="Maya" />
 }

@@ -633,6 +633,8 @@ const appointmentTaskUpdateSchema = z.object({
   matterId: z.string().uuid(),
   taskId: z.string().uuid(),
   status: z.enum(["open", "done", "waived"]),
+  assignedTo: z.string().uuid().optional().or(z.literal("")),
+  dueAt: z.string().datetime().optional().or(z.literal("")),
 })
 
 export async function updateAppointmentTaskAction(input: z.input<typeof appointmentTaskUpdateSchema>): Promise<MatterPilotActionResult> {
@@ -643,9 +645,17 @@ export async function updateAppointmentTaskAction(input: z.input<typeof appointm
   const { data: userData } = await supabase.auth.getUser()
   if (!userData.user) return { ok: false, error: "Please sign in before updating preparation." }
 
+  if (parsed.data.assignedTo) {
+    const { data: member } = await supabase.from("matter_members").select("user_id").eq("matter_id", parsed.data.matterId).eq("user_id", parsed.data.assignedTo).maybeSingle()
+    if (!member) return { ok: false, error: "Choose a member of this matter as the task owner." }
+  }
+
+  const taskUpdate: { status: string; updated_at: string; assigned_to?: string | null; due_at?: string | null } = { status: parsed.data.status, updated_at: new Date().toISOString() }
+  if (parsed.data.assignedTo !== undefined) taskUpdate.assigned_to = parsed.data.assignedTo || null
+  if (parsed.data.dueAt !== undefined) taskUpdate.due_at = parsed.data.dueAt || null
   const { data, error } = await supabase
     .from("appointment_tasks")
-    .update({ status: parsed.data.status })
+    .update(taskUpdate)
     .eq("id", parsed.data.taskId)
     .eq("matter_id", parsed.data.matterId)
     .select("appointment_id")
@@ -654,6 +664,29 @@ export async function updateAppointmentTaskAction(input: z.input<typeof appointm
 
   revalidatePath("/matterpilot")
   return { ok: true, appointmentId: data.appointment_id }
+}
+
+const appointmentTaskDependencySchema = z.object({
+  matterId: z.string().uuid(),
+  taskId: z.string().uuid(),
+  dependsOnTaskId: z.string().uuid(),
+})
+
+export async function createAppointmentTaskDependencyAction(input: z.input<typeof appointmentTaskDependencySchema>): Promise<MatterPilotActionResult> {
+  const parsed = appointmentTaskDependencySchema.safeParse(input)
+  if (!parsed.success || parsed.data.taskId === parsed.data.dependsOnTaskId) return { ok: false, error: "Choose a different task as the dependency." }
+  const supabase = await createClient()
+  const { data: userData } = await supabase.auth.getUser()
+  if (!userData.user) return { ok: false, error: "Please sign in before linking task dependencies." }
+  const [{ data: task }, { data: dependency }] = await Promise.all([
+    supabase.from("appointment_tasks").select("id, appointment_id").eq("id", parsed.data.taskId).eq("matter_id", parsed.data.matterId).single(),
+    supabase.from("appointment_tasks").select("id, appointment_id").eq("id", parsed.data.dependsOnTaskId).eq("matter_id", parsed.data.matterId).single(),
+  ])
+  if (!task || !dependency || task.appointment_id !== dependency.appointment_id) return { ok: false, error: "Tasks can only depend on another task in the same appointment." }
+  const { data, error } = await supabase.from("appointment_task_dependencies").insert({ matter_id: parsed.data.matterId, task_id: parsed.data.taskId, depends_on_task_id: parsed.data.dependsOnTaskId, created_by: userData.user.id }).select("task_id").single()
+  if (error || !data) return { ok: false, error: error?.code === "23505" ? "That dependency already exists." : error?.message ?? "Unable to link that dependency." }
+  revalidatePath("/matterpilot")
+  return { ok: true, appointmentId: task.appointment_id }
 }
 
 const appointmentDocumentUpdateSchema = z.object({

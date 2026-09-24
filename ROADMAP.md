@@ -52,11 +52,11 @@ This is the ordered product plan for continuing the current build. Completed wor
 
 ## Phase 5 — intake, contacts, tasks, and deadlines
 
-- [ ] Add duplicate contact detection and cross-matter contact history.
-- [ ] Add conflict search across people and organizations.
-- [ ] Add intake acceptance that creates a matter and starts engagement workflows.
-- [ ] Add task owners, dependencies, recurring tasks, notifications, and court-rule calculations.
-- [ ] Add workload and team assignment views.
+- [x] Add duplicate contact detection and cross-matter contact history.
+- [x] Add conflict search across people and organizations for intake review.
+- [x] Add intake acceptance that creates a matter and starts engagement workflows.
+- [x] Add task owners, dependencies, due dates, and workload/team assignment views.
+- [ ] Add recurring tasks, notifications, and court-rule calculations.
 
 ## Phase 6 — reporting and firm operations
 

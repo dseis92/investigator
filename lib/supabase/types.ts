@@ -17,6 +17,7 @@ type AppointmentTypeRow = { id: string; matter_id: string; name: string; duratio
 type AppointmentRow = { id: string; matter_id: string; appointment_type_id: string | null; workflow_key: string; title: string; starts_at: string; ends_at: string; status: string; conflict_status: string; location: string | null; notes: string | null; client_name: string | null; client_email: string | null; series_id: string | null; occurrence_index: number | null; created_by: string; created_at: string; updated_at: string }
 type AppointmentParticipantRow = { id: string; matter_id: string; appointment_id: string; display_name: string; email: string | null; participant_role: string; response_status: string; is_required: boolean; created_at: string }
 type AppointmentTaskRow = { id: string; matter_id: string; appointment_id: string; label: string; status: string; is_blocking: boolean; due_at: string | null; assigned_to: string | null; created_by: string; created_at: string; updated_at: string }
+type AppointmentTaskDependencyRow = { id: string; matter_id: string; task_id: string; depends_on_task_id: string; created_by: string; created_at: string }
 type AppointmentDocumentRow = { id: string; matter_id: string; appointment_id: string; name: string; status: string; is_required: boolean; requested_at: string; received_at: string | null; created_by: string; created_at: string }
 type AppointmentDocumentDraftRow = { id: string; matter_id: string; appointment_document_id: string; template_key: string; content: string; status: string; visibility: string; field_schema: Json; field_values: Json; created_by: string; updated_by: string; created_at: string; updated_at: string }
 type AppointmentDocumentVersionRow = { id: string; matter_id: string; appointment_document_id: string; version_number: number; content: string; status: string; visibility: string; field_schema: Json; field_values: Json; created_by: string; created_at: string }
@@ -89,6 +90,7 @@ export type Database = {
       appointments: MatterPilotTable<AppointmentRow, MatterPilotInsert<AppointmentRow>, MatterPilotUpdate<AppointmentRow>>
       appointment_participants: MatterPilotTable<AppointmentParticipantRow, MatterPilotInsert<AppointmentParticipantRow>, MatterPilotUpdate<AppointmentParticipantRow>>
       appointment_tasks: MatterPilotTable<AppointmentTaskRow, MatterPilotInsert<AppointmentTaskRow>, MatterPilotUpdate<AppointmentTaskRow>>
+      appointment_task_dependencies: MatterPilotTable<AppointmentTaskDependencyRow, MatterPilotInsert<AppointmentTaskDependencyRow>, MatterPilotUpdate<AppointmentTaskDependencyRow>>
       appointment_documents: MatterPilotTable<AppointmentDocumentRow, MatterPilotInsert<AppointmentDocumentRow>, MatterPilotUpdate<AppointmentDocumentRow>>
       appointment_document_drafts: MatterPilotTable<AppointmentDocumentDraftRow, MatterPilotInsert<AppointmentDocumentDraftRow>, MatterPilotUpdate<AppointmentDocumentDraftRow>>
       appointment_document_versions: MatterPilotTable<AppointmentDocumentVersionRow, MatterPilotInsert<AppointmentDocumentVersionRow>, MatterPilotUpdate<AppointmentDocumentVersionRow>>
