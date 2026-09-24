@@ -57,7 +57,7 @@ This is the ordered product plan for continuing the current build. Completed wor
 - [x] Add intake acceptance that creates a matter and starts engagement workflows.
 - [x] Add task owners, dependencies, due dates, and workload/team assignment views.
 - [x] Add recurring task templates, notification queue, and court-rule calculations.
-- [ ] Add scheduled notification delivery and automatic recurring-task execution.
+- [x] Add scheduled notification delivery and automatic recurring-task execution through the protected Vercel Cron operations engine.
 
 ## Phase 6 — reporting and firm operations
 

@@ -36,7 +36,7 @@ export async function createTaskTemplateAction(input: z.input<typeof taskTemplat
     interval_count: parsed.data.intervalCount,
     is_blocking: parsed.data.isBlocking,
     assigned_to: parsed.data.assignedTo || null,
-    next_run_at: parsed.data.nextRunAt || null,
+    next_run_at: parsed.data.nextRunAt || new Date().toISOString(),
     created_by: user.id,
   }).select("id").single()
   if (error || !data) return { ok: false, error: error?.message ?? "Unable to save the recurring task." }
@@ -100,12 +100,12 @@ export async function refreshNotificationQueueAction(): Promise<OperationResult>
   ])
   const matterNames = new Map((matters ?? []).map((matter) => [matter.id, matter.name]))
   const candidates = [
-    ...(tasks ?? []).map((task) => ({ matterId: task.matter_id, kind: "task_due", title: `Overdue task: ${task.label}`, body: `${matterNames.get(task.matter_id) ?? "Matter"} has an open task past its due date.`, href: "/matterpilot#workload" })),
-    ...(deadlines ?? []).map((deadline) => ({ matterId: deadline.matter_id, kind: "deadline_due", title: `Missed deadline: ${deadline.title}`, body: `${matterNames.get(deadline.matter_id) ?? "Matter"} has an open deadline past its due date.`, href: "/matterpilot#deadlines" })),
+    ...(tasks ?? []).map((task) => ({ matterId: task.matter_id, kind: "task_due", title: `Overdue task: ${task.label}`, body: `${matterNames.get(task.matter_id) ?? "Matter"} has an open task past its due date.`, href: "/matterpilot#tasks", dedupeKey: `task_due:${task.id}` })),
+    ...(deadlines ?? []).map((deadline) => ({ matterId: deadline.matter_id, kind: "deadline_due", title: `Missed deadline: ${deadline.title}`, body: `${matterNames.get(deadline.matter_id) ?? "Matter"} has an open deadline past its due date.`, href: "/matterpilot#deadlines", dedupeKey: `deadline_due:${deadline.id}` })),
   ]
   for (const candidate of candidates) {
-    const { data: existing } = await supabase.from("matter_notifications").select("id").eq("matter_id", candidate.matterId).eq("recipient_id", user.id).eq("title", candidate.title).is("read_at", null).maybeSingle()
-    if (!existing) await supabase.from("matter_notifications").insert({ matter_id: candidate.matterId, recipient_id: user.id, kind: candidate.kind, title: candidate.title, body: candidate.body, href: candidate.href })
+    const { data: existing } = await supabase.from("matter_notifications").select("id").eq("recipient_id", user.id).eq("dedupe_key", candidate.dedupeKey).maybeSingle()
+    if (!existing) await supabase.from("matter_notifications").insert({ matter_id: candidate.matterId, recipient_id: user.id, kind: candidate.kind, title: candidate.title, body: candidate.body, href: candidate.href, dedupe_key: candidate.dedupeKey })
   }
   revalidatePath("/matterpilot/operations")
   return { ok: true, message: candidates.length ? `Refreshed ${candidates.length} overdue notification${candidates.length === 1 ? "" : "s"}.` : "No overdue work found." }

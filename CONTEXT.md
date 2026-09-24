@@ -76,6 +76,10 @@ A chronological view of auditable changes to matter-owned work. Activity is a pr
 
 Provider-specific metadata describing whether a user's Google or Outlook calendar is connected and when it last synchronized. Connection metadata never implies that an external event was written successfully; each external event requires a recorded sync result.
 
+## Scheduled operations engine
+
+The protected hourly job that materializes due recurring task templates onto the next matching future appointment and creates deduplicated overdue task/deadline notifications for every matter member. It is idempotent, records each template run, and does not replace human review or external calendar synchronization.
+
 ## AI assistance run
 
 A matter-scoped, versioned draft produced from structured records for human review. An assistance run is never a final legal conclusion, and its status, model, prompt version, and review decision remain auditable.

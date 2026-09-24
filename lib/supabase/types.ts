@@ -19,7 +19,8 @@ type AppointmentParticipantRow = { id: string; matter_id: string; appointment_id
 type AppointmentTaskRow = { id: string; matter_id: string; appointment_id: string; label: string; status: string; is_blocking: boolean; due_at: string | null; assigned_to: string | null; created_by: string; created_at: string; updated_at: string }
 type AppointmentTaskDependencyRow = { id: string; matter_id: string; task_id: string; depends_on_task_id: string; created_by: string; created_at: string }
 type AppointmentTaskTemplateRow = { id: string; matter_id: string; label: string; frequency: string; interval_count: number; is_blocking: boolean; assigned_to: string | null; next_run_at: string | null; active: boolean; created_by: string; created_at: string; updated_at: string }
-type MatterNotificationRow = { id: string; matter_id: string; recipient_id: string; kind: string; title: string; body: string; href: string | null; read_at: string | null; created_at: string }
+type MatterNotificationRow = { id: string; matter_id: string; recipient_id: string; kind: string; title: string; body: string; href: string | null; dedupe_key: string | null; read_at: string | null; created_at: string }
+type AppointmentTaskTemplateRunRow = { id: string; matter_id: string; template_id: string; appointment_id: string; task_id: string | null; scheduled_for: string; status: string; error_message: string | null; created_at: string }
 type CourtRuleDefinitionRow = { id: string; name: string; jurisdiction: string; trigger_kind: string; offset_days: number; business_days: boolean; description: string | null; active: boolean; created_by: string; created_at: string; updated_at: string }
 type CalendarSyncConnectionRow = { id: string; provider: string; user_id: string; matter_id: string | null; status: string; provider_account_email: string | null; external_calendar_id: string | null; last_sync_at: string | null; error_message: string | null; created_at: string; updated_at: string }
 type CalendarSyncEventRow = { id: string; connection_id: string; matter_id: string; appointment_id: string; external_event_id: string; external_etag: string | null; last_pushed_at: string | null; created_at: string }
@@ -102,6 +103,7 @@ export type Database = {
       appointment_task_dependencies: MatterPilotTable<AppointmentTaskDependencyRow, MatterPilotInsert<AppointmentTaskDependencyRow>, MatterPilotUpdate<AppointmentTaskDependencyRow>>
       appointment_task_templates: MatterPilotTable<AppointmentTaskTemplateRow, MatterPilotInsert<AppointmentTaskTemplateRow>, MatterPilotUpdate<AppointmentTaskTemplateRow>>
       matter_notifications: MatterPilotTable<MatterNotificationRow, MatterPilotInsert<MatterNotificationRow>, MatterPilotUpdate<MatterNotificationRow>>
+      appointment_task_template_runs: MatterPilotTable<AppointmentTaskTemplateRunRow, MatterPilotInsert<AppointmentTaskTemplateRunRow>, MatterPilotUpdate<AppointmentTaskTemplateRunRow>>
       court_rule_definitions: MatterPilotTable<CourtRuleDefinitionRow, MatterPilotInsert<CourtRuleDefinitionRow>, MatterPilotUpdate<CourtRuleDefinitionRow>>
       calendar_sync_connections: MatterPilotTable<CalendarSyncConnectionRow, MatterPilotInsert<CalendarSyncConnectionRow>, MatterPilotUpdate<CalendarSyncConnectionRow>>
       calendar_sync_events: MatterPilotTable<CalendarSyncEventRow, MatterPilotInsert<CalendarSyncEventRow>, MatterPilotUpdate<CalendarSyncEventRow>>
