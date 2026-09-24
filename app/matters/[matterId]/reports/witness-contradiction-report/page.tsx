@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 
 import { recordReportGenerated } from "./actions"
 import { MatterHeader } from "@/components/matters/matter-header"
+import { DownloadPdfButton } from "@/components/reports/download-pdf-button"
 import { PrintButton } from "@/components/reports/print-button"
 import {
   WitnessContradictionReport,
@@ -210,7 +211,10 @@ export default async function WitnessContradictionReportPage({
           Every witness and expert with recorded statements, materially different descriptions identified between
           accounts, and cited evidence for each side.
         </p>
-        <PrintButton onBeforePrint={recordReportGenerated.bind(null, matterId)} />
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <DownloadPdfButton matterId={matterId} reportType="witness-contradiction-report" />
+          <PrintButton onBeforePrint={recordReportGenerated.bind(null, matterId)} />
+        </div>
       </div>
 
       <div className="hidden print:block">

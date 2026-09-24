@@ -38,7 +38,7 @@ import {
   UsersRound,
   X,
 } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useMemo, useState, type DragEvent } from "react"
 import { useRouter } from "next/navigation"
 
 import { SignOutButton } from "@/components/sign-out-button"
@@ -46,15 +46,23 @@ import {
   createAppointmentDocumentDraftAction,
   createAppointmentAction,
   createAppointmentPacketAction,
+  cancelCalendarBlackoutAction,
+  createCalendarBlackoutAction,
+  createClientPortalDocumentRequestAction,
   enableClientPortalAccessAction,
   createMatterDeadlineAction,
   createMatterContactAction,
   queueAppointmentEmailAction,
   revokeAppointmentPacketAction,
   revokeClientPortalAccessAction,
+  createClientPortalDocumentDownloadUrlAction,
+  reviewClientPortalDocumentAction,
   saveAppointmentEmailDraftAction,
   saveAppointmentDocumentDraftAction,
   restoreAppointmentDocumentDraftVersionAction,
+  saveCalendarAvailabilityAction,
+  sendFirmPortalMessageAction,
+  rescheduleAppointmentAction,
   updateAppointmentDocumentDraftStatusAction,
   updateAppointmentDocumentDraftVisibilityAction,
   updateAppointmentConflictAction,
@@ -110,6 +118,24 @@ export type Appointment = {
   communications?: { id: string; channel: "email" | "sms"; direction: "outbound" | "inbound"; status: "draft" | "queued" | "sent" | "failed" | "cancelled"; recipient: string | null; subject: string | null; body: string; createdAt: string; sentAt: string | null }[]
 }
 
+export type DashboardAvailabilityRule = {
+  id: string
+  matterId: string
+  weekday: number
+  startTime: string
+  endTime: string
+  timezone: string
+  label: string | null
+}
+
+export type DashboardBlackout = {
+  id: string
+  matterId: string
+  startsAt: string
+  endsAt: string
+  reason: string
+}
+
 export type DashboardCommunication = {
   id: string
   matterId: string
@@ -152,6 +178,32 @@ export type DashboardContact = {
   status: "active" | "archived"
   appointmentCount: number
   openDeadlineCount: number
+}
+
+export type DashboardPortalMessage = {
+  id: string
+  matterId: string
+  matter: string
+  senderRole: "client" | "firm"
+  senderEmail: string
+  body: string
+  createdAt: string
+}
+
+export type DashboardPortalDocumentRequest = {
+  id: string
+  matterId: string
+  matter: string
+  appointmentId: string | null
+  title: string
+  description: string
+  status: "requested" | "uploaded" | "approved" | "rejected"
+  fileName: string | null
+  mimeType: string | null
+  sizeBytes: number | null
+  uploadedAt: string | null
+  reviewerNote: string | null
+  createdAt: string
 }
 
 const WEEK = [
@@ -476,6 +528,68 @@ function calendarEventEndHour(appointment: Appointment) {
   return end ? end.getHours() + end.getMinutes() / 60 : appointment.end
 }
 
+type CalendarMoveResult = { ok: true; appointmentId: string } | { ok: false; error: string }
+
+function CalendarBoardEnhanced({ appointments, onSelect, onCreate, onMove }: { appointments: Appointment[]; onSelect: (appointment: Appointment) => void; onCreate: (slot?: AppointmentSlot) => void; onMove: (appointment: Appointment, startsAt: string, endsAt: string) => Promise<CalendarMoveResult> }) {
+  const firstDatedAppointment = appointments.find((appointment) => appointment.startAt)?.startAt
+  const [anchor, setAnchor] = useState(() => startOfWorkWeek(firstDatedAppointment ? new Date(firstDatedAppointment) : new Date()))
+  const [view, setView] = useState<"week" | "day" | "month" | "agenda">("week")
+  const [selectedDay, setSelectedDay] = useState(() => firstDatedAppointment ? new Date(firstDatedAppointment) : new Date())
+  const [filter, setFilter] = useState<CalendarFilter>("all")
+  const [message, setMessage] = useState("")
+  const days = workWeekDays(anchor)
+  const monthStart = new Date(anchor.getFullYear(), anchor.getMonth(), 1)
+  const monthGridStart = new Date(monthStart)
+  monthGridStart.setDate(1 - monthStart.getDay())
+  const monthDays = Array.from({ length: 42 }, (_, index) => { const day = new Date(monthGridStart); day.setDate(monthGridStart.getDate() + index); return day })
+  const rangeDays = view === "day" ? [selectedDay] : view === "month" ? monthDays : days
+  const visibleAppointments = appointments.filter((appointment) => {
+    const date = calendarEventDate(appointment)
+    if (!date || !rangeDays.some((day) => localDateKey(day) === localDateKey(date))) return false
+    if (filter === "notes") return Boolean(appointment.isNote)
+    if (filter !== "all") return appointment.readiness === filter && !appointment.isNote
+    return true
+  })
+
+  function moveRange(amount: number) {
+    const next = new Date(anchor)
+    if (view === "month") next.setMonth(next.getMonth() + amount)
+    else if (view === "day") next.setDate(next.getDate() + amount)
+    else next.setDate(next.getDate() + amount * 7)
+    setAnchor(next)
+    setSelectedDay(next)
+  }
+
+  function currentLabel() {
+    if (view === "day") return new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }).format(selectedDay)
+    if (view === "month") return new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" }).format(anchor)
+    return `${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(days[0])} – ${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(days[4])}`
+  }
+
+  function handleDragStart(event: DragEvent<HTMLButtonElement>, appointment: Appointment) {
+    event.dataTransfer.setData("text/matterpilot-appointment", appointment.id)
+    event.dataTransfer.effectAllowed = "move"
+  }
+
+  async function handleDrop(event: DragEvent<HTMLElement>, day: Date, hour = 9) {
+    event.preventDefault()
+    const appointmentId = event.dataTransfer.getData("text/matterpilot-appointment")
+    const appointment = appointments.find((item) => item.id === appointmentId)
+    if (!appointment || appointment.isNote || !appointment.startAt || !appointment.endAt) return
+    const startsAt = new Date(`${localDateKey(day)}T${String(hour).padStart(2, "0")}:00:00`).toISOString()
+    const duration = new Date(appointment.endAt).getTime() - new Date(appointment.startAt).getTime()
+    const result = await onMove(appointment, startsAt, new Date(new Date(startsAt).getTime() + duration).toISOString())
+    setMessage(result.ok ? "Appointment moved and conflict-checked." : result.error)
+  }
+
+  const appointmentsForDay = (day: Date) => visibleAppointments.filter((appointment) => calendarEventDate(appointment) && localDateKey(calendarEventDate(appointment)!) === localDateKey(day)).sort((a, b) => calendarEventHour(a) - calendarEventHour(b))
+  const renderCompactAppointment = (appointment: Appointment) => <button key={appointment.id} type="button" draggable={!appointment.isNote} onDragStart={(event) => handleDragStart(event, appointment)} onClick={() => onSelect(appointment)} className={cn("w-full truncate rounded-lg border px-2 py-1.5 text-left text-[11px] font-semibold transition-colors hover:-translate-y-0.5 hover:shadow-sm", appointment.isNote ? "border-[#c8d8dc] bg-[#f1f7f8] text-[#385367]" : STATUS[appointment.readiness].accent)}>{formatTime(calendarEventHour(appointment))} · {appointment.title}</button>
+
+  return <div id="calendar" className="min-w-0 rounded-2xl border border-[#ded9d0] bg-[#fbfaf7] shadow-sm"><div className="flex flex-col gap-4 border-b border-[#e8e3da] px-5 py-4 sm:px-6"><div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"><div><div className="flex items-center gap-2"><h2 className="font-serif text-xl font-semibold text-[#23313d]">Calendar</h2><span className="rounded-full bg-[#eeeae3] px-2 py-0.5 text-[10px] font-bold text-[#777b76]">Operations view</span></div><p className="mt-1 text-xs text-[#8b8d88]">{currentLabel()} · Drag an appointment to move it, or click an open slot to add one.</p></div><div className="flex flex-wrap items-center gap-2"><div className="flex items-center gap-1 rounded-lg border border-[#ded9d0] bg-white p-1" role="group" aria-label="Calendar view"><button type="button" onClick={() => setView("week")} className={cn("rounded-md px-2.5 py-1.5 text-[11px] font-semibold", view === "week" ? "bg-[#23313d] text-white" : "text-[#7b817b] hover:bg-[#f1eee8]")}>Week</button><button type="button" onClick={() => setView("day")} className={cn("rounded-md px-2.5 py-1.5 text-[11px] font-semibold", view === "day" ? "bg-[#23313d] text-white" : "text-[#7b817b] hover:bg-[#f1eee8]")}>Day</button><button type="button" onClick={() => setView("month")} className={cn("rounded-md px-2.5 py-1.5 text-[11px] font-semibold", view === "month" ? "bg-[#23313d] text-white" : "text-[#7b817b] hover:bg-[#f1eee8]")}>Month</button><button type="button" onClick={() => setView("agenda")} className={cn("rounded-md px-2.5 py-1.5 text-[11px] font-semibold", view === "agenda" ? "bg-[#23313d] text-white" : "text-[#7b817b] hover:bg-[#f1eee8]")}>Agenda</button></div><button type="button" onClick={() => { const today = new Date(); setAnchor(startOfWorkWeek(today)); setSelectedDay(today) }} className="rounded-lg border border-[#ded9d0] bg-white px-2.5 py-2 text-[11px] font-semibold text-[#59645e] hover:border-[#c08a6d]">Today</button><button type="button" onClick={() => moveRange(-1)} className="rounded-lg p-2 text-[#69736d] hover:bg-[#eeeae3]" aria-label="Previous calendar range"><ChevronLeft className="size-4" /></button><button type="button" onClick={() => moveRange(1)} className="rounded-lg p-2 text-[#69736d] hover:bg-[#eeeae3]" aria-label="Next calendar range"><ChevronRight className="size-4" /></button></div></div><div className="flex flex-wrap items-center justify-between gap-3"><div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Calendar filters"><span className="mr-1 text-[10px] font-bold uppercase tracking-[0.14em] text-[#9b9d97]">Show</span>{(["all", "ready", "at_risk", "blocked", "notes"] as CalendarFilter[]).map((option) => <button key={option} type="button" onClick={() => setFilter(option)} className={cn("rounded-full border px-2.5 py-1 text-[10px] font-semibold", filter === option ? "border-[#b65f3a] bg-[#fff5ef] text-[#a24f31]" : "border-[#e1dbd1] bg-white text-[#7b817b] hover:border-[#c08a6d]")}>{option === "all" ? "Everything" : option === "at_risk" ? "At risk" : option === "notes" ? "Notes" : option[0].toUpperCase() + option.slice(1)}</button>)}</div>{message ? <p className={cn("text-[11px] font-semibold", message.includes("moved") ? "text-emerald-700" : "text-rose-700")}>{message}</p> : null}</div></div>{view === "month" ? <div className="grid grid-cols-7 gap-px bg-[#e8e3da] p-px">{monthDays.map((day) => <div key={localDateKey(day)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => void handleDrop(event, day)} className={cn("min-h-28 bg-[#fbfaf7] p-2", day.getMonth() !== anchor.getMonth() ? "opacity-45" : "")}><button type="button" onClick={() => { setSelectedDay(day); setView("day") }} className="mb-2 text-xs font-semibold text-[#5f665f] hover:text-[#b65f3a]">{day.getDate()}</button><div className="space-y-1">{appointmentsForDay(day).slice(0, 4).map(renderCompactAppointment)}</div></div>)}</div> : view === "day" ? <div className="grid grid-cols-[58px_minmax(0,1fr)]">{<div>{TIMES.map((time) => <div key={time} className="h-[76px] border-b border-[#eeeae3] pr-2 pt-1 text-right text-[10px] text-[#a1a39d]">{time > 12 ? time - 12 : time}{time >= 12 ? "p" : "a"}</div>)}</div>}<div className="relative">{TIMES.map((time) => <div key={time} onDragOver={(event) => event.preventDefault()} onDrop={(event) => void handleDrop(event, selectedDay, time)} className="relative h-[76px] border-b border-[#eeeae3] bg-white/30"><button type="button" onClick={() => onCreate({ date: localDateKey(selectedDay), time: `${String(time).padStart(2, "0")}:00` })} className="absolute inset-0 rounded-sm hover:bg-[#fff5ef]" />{appointmentsForDay(selectedDay).filter((appointment) => Math.floor(calendarEventHour(appointment)) === time).map(renderCompactAppointment)}</div>)}</div></div> : view === "agenda" ? <div className="divide-y divide-[#e8e3da] px-5 sm:px-6">{rangeDays.map((day) => <div key={localDateKey(day)} className="py-4"><div className="mb-3 flex items-center justify-between"><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#9b765f]">{new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" }).format(day)}</p><button type="button" onClick={() => onCreate({ date: localDateKey(day), time: "09:00" })} className="text-[11px] font-semibold text-[#b65f3a] hover:underline"><Plus className="mr-1 inline size-3" />Add</button></div>{appointmentsForDay(day).length ? <div className="space-y-2">{appointmentsForDay(day).map(renderCompactAppointment)}</div> : <p className="rounded-xl border border-dashed border-[#d8d1c6] bg-[#faf8f4] px-4 py-4 text-xs text-[#8b8d88]">No appointments scheduled.</p>}</div>)}</div> : <div className="overflow-x-auto"><div className="min-w-[780px]"><div className="grid grid-cols-[58px_repeat(5,minmax(140px,1fr))] border-b border-[#e8e3da]"><div />{days.map((day) => <button key={localDateKey(day)} type="button" onClick={() => { setSelectedDay(day); setView("day") }} className="px-2 py-3 text-center hover:bg-[#fff5ef]"><span className="block text-[10px] font-bold uppercase tracking-[0.16em] text-[#8b8d88]">{new Intl.DateTimeFormat("en-US", { weekday: "short" }).format(day)}</span><span className={cn("mt-1 inline-flex size-7 items-center justify-center rounded-full text-sm font-semibold", localDateKey(day) === localDateKey(new Date()) ? "bg-[#b65f3a] text-white" : "text-[#23313d]")}>{day.getDate()}</span></button>)}</div><div className="grid grid-cols-[58px_repeat(5,minmax(140px,1fr))]"><div>{TIMES.map((time) => <div key={time} className="h-[76px] border-b border-[#eeeae3] pr-2 pt-1 text-right text-[10px] text-[#a1a39d]">{time > 12 ? time - 12 : time}{time >= 12 ? "p" : "a"}</div>)}</div>{days.map((day) => <div key={localDateKey(day)} className="relative border-l border-[#eeeae3]">{TIMES.map((time) => <div key={time} onDragOver={(event) => event.preventDefault()} onDrop={(event) => void handleDrop(event, day, time)} className="relative h-[76px] border-b border-[#eeeae3]"><button type="button" aria-label={`Create appointment on ${localDateKey(day)} at ${formatTime(time)}`} onClick={() => onCreate({ date: localDateKey(day), time: `${String(time).padStart(2, "0")}:00` })} className="absolute inset-0 z-0 rounded-sm hover:bg-[#fff5ef]" /></div>)}{appointmentsForDay(day).map((appointment) => <button key={appointment.id} type="button" draggable={!appointment.isNote} onDragStart={(event) => handleDragStart(event, appointment)} onClick={() => onSelect(appointment)} className={cn("group absolute inset-x-1 z-10 overflow-hidden rounded-lg border p-2 text-left shadow-sm", appointment.isNote ? "border-[#c8d8dc] bg-[#f1f7f8] text-[#385367]" : STATUS[appointment.readiness].accent)} style={{ top: `${(calendarEventHour(appointment) - 8) * 76 + 4}px`, height: `${Math.max((calendarEventEndHour(appointment) - calendarEventHour(appointment)) * 76 - 8, 58)}px` }}><span className="block truncate text-[11px] font-bold">{appointment.title}</span><span className="mt-1 block truncate text-[11px] opacity-75">{appointment.client}</span><span className="mt-2 block text-[10px] opacity-65">{formatTime(calendarEventHour(appointment))}</span></button>)}</div>)}</div></div></div>}</div>
+}
+
+// Retained for reference while the enhanced operations view is rolled out.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function CalendarBoard({ appointments, onSelect, onCreate }: { appointments: Appointment[]; onSelect: (appointment: Appointment) => void; onCreate: (slot?: AppointmentSlot) => void }) {
   const firstDatedAppointment = appointments.find((appointment) => appointment.startAt)?.startAt
   const [anchor, setAnchor] = useState(() => startOfWorkWeek(firstDatedAppointment ? new Date(firstDatedAppointment) : new Date()))
@@ -714,6 +828,9 @@ function AppointmentDetail({ appointment, onClose, onUpdated }: { appointment: A
   const [draftEditor, setDraftEditor] = useState<{ draftId: string; documentId: string; name: string; content: string; status: "draft" | "final"; visibility: "internal" | "client"; versions: NonNullable<Appointment["documents"][number]["versions"]> } | null>(null)
   const [emailComposer, setEmailComposer] = useState(false)
   const [packetUrl, setPacketUrl] = useState<string | null>(null)
+  const [rescheduleDate, setRescheduleDate] = useState(() => appointment.startAt ? new Date(appointment.startAt).toISOString().slice(0, 10) : "")
+  const [rescheduleTime, setRescheduleTime] = useState(() => appointment.startAt ? `${String(new Date(appointment.startAt).getHours()).padStart(2, "0")}:${String(new Date(appointment.startAt).getMinutes()).padStart(2, "0")}` : "09:00")
+  const [rescheduleReason, setRescheduleReason] = useState("")
   const participants = appointment.participantDetails ?? []
   const hasClientPacketDocuments = appointment.documents.some((document) => document.label === "Intake questionnaire") && appointment.documents.some((document) => document.label === "Engagement letter")
   const packetStatusLabel = !appointment.packet ? "Not created" : appointment.packet.status === "expired" ? "Expired" : appointment.packet.status === "completed" ? "Completed" : appointment.packet.status === "revoked" ? "Revoked" : appointment.packet.viewedAt ? "Viewed" : "Sent"
@@ -844,6 +961,20 @@ function AppointmentDetail({ appointment, onClose, onUpdated }: { appointment: A
     setPacketUrl(null)
   }
 
+  async function reschedule() {
+    if (!appointment.matterId || !appointment.startAt || !appointment.endAt || !rescheduleDate || !rescheduleTime) return
+    const startsAt = new Date(`${rescheduleDate}T${rescheduleTime}:00`).toISOString()
+    const duration = new Date(appointment.endAt).getTime() - new Date(appointment.startAt).getTime()
+    const endsAt = new Date(new Date(startsAt).getTime() + duration).toISOString()
+    await runAction("reschedule", () => rescheduleAppointmentAction({
+      matterId: appointment.matterId,
+      appointmentId: appointment.id,
+      startsAt,
+      endsAt,
+      reason: rescheduleReason,
+    }))
+  }
+
   return (
     <div className="fixed inset-0 z-40 flex items-end justify-end bg-[#15212c]/20 backdrop-blur-[1px] sm:p-4">
       <div className="flex h-full w-full max-w-lg flex-col overflow-auto bg-[#fbfaf7] shadow-2xl sm:h-auto sm:max-h-[calc(100vh-2rem)] sm:rounded-2xl">
@@ -853,13 +984,14 @@ function AppointmentDetail({ appointment, onClose, onUpdated }: { appointment: A
         </div>
         <div className="space-y-6 p-5">{appointment.notes ? <section className="rounded-xl border border-[#e4ded5] bg-[#f8f5ef] p-4"><h3 className="text-xs font-bold uppercase tracking-[0.15em] text-[#8b8d88]">{appointment.isNote ? "Note" : "Internal notes"}</h3><p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#4c5751]">{appointment.notes}</p></section> : null}
           {!appointment.isNote ? <section className="rounded-xl border border-[#e4ded5] bg-white p-4"><div className="flex items-center justify-between gap-3"><div><h3 className="text-xs font-bold uppercase tracking-[0.15em] text-[#8b8d88]">Conflict check</h3><p className="mt-1 text-xs text-[#737872]">A clear check is required before this appointment is ready.</p></div><span className={cn("rounded-full px-2 py-1 text-[10px] font-bold", appointment.conflictStatus === "clear" ? "bg-emerald-50 text-emerald-700" : appointment.conflictStatus === "issue" ? "bg-rose-50 text-rose-700" : "bg-amber-50 text-amber-700")}>{appointment.conflictStatus === "clear" ? "Clear" : appointment.conflictStatus === "issue" ? "Issue" : "Pending"}</span></div><Button size="sm" variant="outline" disabled={Boolean(savingKey)} onClick={() => runAction("conflict", () => updateAppointmentConflictAction({ matterId: appointment.matterId, appointmentId: appointment.id, conflictStatus: appointment.conflictStatus === "clear" ? "pending" : "clear" }))} className="mt-3 border-[#ded9d0] bg-[#fbfaf7]">{savingKey === "conflict" ? "Saving…" : appointment.conflictStatus === "clear" ? "Reopen check" : "Mark conflict clear"}</Button></section> : null}
+          {!appointment.isNote ? <section className="rounded-xl border border-[#d8e1e4] bg-[#f7fbfc] p-4"><div className="flex items-start gap-3"><CalendarClock className="mt-0.5 size-4 shrink-0 text-[#385367]" /><div className="min-w-0 flex-1"><h3 className="text-xs font-bold uppercase tracking-[0.15em] text-[#385367]">Move appointment</h3><p className="mt-1 text-xs leading-5 text-[#63747a]">The original time is preserved in the appointment history. MatterPilot will reject blocked or overlapping times.</p></div></div><div className="mt-4 grid grid-cols-2 gap-2"><label className="text-[11px] text-[#63747a]">New date<input type="date" value={rescheduleDate} onChange={(event) => setRescheduleDate(event.target.value)} className="mt-1 h-9 w-full rounded-lg border border-[#c8d8dc] bg-white px-2 text-xs text-[#39443f]" /></label><label className="text-[11px] text-[#63747a]">New time<input type="time" value={rescheduleTime} onChange={(event) => setRescheduleTime(event.target.value)} className="mt-1 h-9 w-full rounded-lg border border-[#c8d8dc] bg-white px-2 text-xs text-[#39443f]" /></label></div><input value={rescheduleReason} onChange={(event) => setRescheduleReason(event.target.value)} placeholder="Reason (optional)" className="mt-2 h-9 w-full rounded-lg border border-[#c8d8dc] bg-white px-3 text-xs text-[#39443f] outline-none focus:border-[#385367]" /><Button size="sm" onClick={reschedule} disabled={Boolean(savingKey) || !rescheduleDate || !rescheduleTime} className="mt-3 bg-[#385367] hover:bg-[#294351]">{savingKey === "reschedule" ? "Moving…" : "Save new time"}<CalendarClock /></Button></section> : null}
           {hasClientPacketDocuments ? <section className="rounded-xl border border-[#d8c7bb] bg-[#fffaf6] p-4"><div className="flex items-start gap-3"><span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#f2e2d8] text-[#a24f31]"><ShieldCheck className="size-4" /></span><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-3"><div><h3 className="text-xs font-bold uppercase tracking-[0.15em] text-[#8b604c]">Client preparation packet</h3><p className="mt-1 text-xs leading-5 text-[#737872]">Track the client’s packet without exposing the private link again.</p></div><span className={cn("shrink-0 rounded-full px-2 py-1 text-[10px] font-bold", packetStatusClass)}>{packetStatusLabel}</span></div>{appointment.packet?.viewedAt || appointment.packet?.completedAt ? <p className="mt-3 text-[11px] text-[#737872]">{appointment.packet.completedAt ? `Completed ${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(appointment.packet.completedAt))}` : `Viewed ${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(appointment.packet.viewedAt!))}`}</p> : null}{appointment.packet?.reminders.length ? <div className="mt-3 space-y-1.5 border-t border-[#eadbd0] pt-3"><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9b765f]">Reminder schedule</p>{appointment.packet.reminders.map((reminder) => <div key={reminder.id} className="flex items-center justify-between gap-2 text-[11px] text-[#737872]"><span>{reminder.kind === "first_reminder" ? "First reminder" : "Final reminder"}</span><span className={cn(reminder.status === "planned" ? "text-[#a24f31]" : "text-[#8b8d88]")}>{reminder.status === "cancelled" ? "Cancelled" : reminder.status === "sent" ? "Sent" : `Planned · ${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(reminder.sendAt))}`}</span></div>)}</div> : null}{packetUrl ? <div className="mt-3 flex flex-wrap items-center gap-2"><a href={packetUrl} target="_blank" rel="noreferrer" className="max-w-full truncate rounded-lg border border-[#e2cfc1] bg-white px-3 py-2 text-xs font-semibold text-[#a24f31] hover:underline">{packetUrl}</a><Button size="sm" variant="outline" onClick={async () => { await navigator.clipboard.writeText(`${window.location.origin}${packetUrl}`) }} className="border-[#d8c1b4] bg-white px-2 text-[11px] text-[#a24f31]">Copy link</Button><Button size="sm" variant="ghost" disabled={Boolean(savingKey)} onClick={revokePacket} className="px-2 text-[11px] text-[#8b604c]">{savingKey === "packet-revoke" ? "Revoking…" : "Revoke link"}</Button></div> : <div className="mt-3 flex flex-wrap items-center gap-2"><Button size="sm" variant="outline" disabled={Boolean(savingKey)} onClick={createPacket} className="border-[#d8c1b4] bg-white px-2 text-[11px] text-[#a24f31]">{savingKey === "packet" ? "Preparing link…" : appointment.packet?.status === "active" ? "Generate replacement link" : "Create secure link"}</Button>{appointment.packet?.status === "active" ? <span className="text-[11px] text-[#9b765f]">The current link is hidden for safety.</span> : null}</div>}</div></div></section> : null}
           <section><div className="flex items-center justify-between"><h3 className="text-xs font-bold uppercase tracking-[0.15em] text-[#8b8d88]">Preparation tasks</h3><span className="text-xs text-[#8b8d88]">{appointment.checklist.filter((item) => item.done).length}/{appointment.checklist.length} complete</span></div><div className="mt-3 space-y-2">{appointment.checklist.map((item) => <div key={item.id ?? item.label} className="flex items-center gap-3 rounded-lg border border-[#e8e3da] bg-white px-3 py-2.5 text-sm text-[#39443f]"><span className={cn("flex size-5 shrink-0 items-center justify-center rounded-full border", item.done ? "border-emerald-500 bg-emerald-500 text-white" : "border-[#d5d0c8] text-transparent")}><Check className="size-3" /></span><span className="min-w-0 flex-1"><span className="block">{item.label}</span>{item.isBlocking ? <span className="mt-0.5 block text-[10px] uppercase tracking-[0.12em] text-[#9b9d97]">Blocking</span> : null}</span>{item.id && appointment.matterId ? <Button size="sm" variant="ghost" disabled={Boolean(savingKey)} onClick={() => runAction(`task-${item.id}`, () => updateAppointmentTaskAction({ matterId: appointment.matterId, taskId: item.id!, status: item.done ? "open" : "done" }))} className="shrink-0 px-2 text-[11px] text-[#b65f3a]">{savingKey === `task-${item.id}` ? "Saving…" : item.done ? "Reopen" : "Mark done"}</Button> : null}</div>)}</div></section>
           {!appointment.isNote ? <section><div className="flex items-center justify-between"><h3 className="text-xs font-bold uppercase tracking-[0.15em] text-[#8b8d88]">Documents</h3><button type="button" className="text-xs font-semibold text-[#b65f3a] hover:underline">Request more</button></div><div className="mt-3 space-y-2">{appointment.documents.map((doc) => <div key={doc.id ?? doc.label} className="flex flex-wrap items-center gap-3 rounded-lg border border-[#e8e3da] bg-white px-3 py-2.5 text-sm"><span className="flex min-w-0 flex-1 items-center gap-2 text-[#39443f]"><FileText className="size-4 shrink-0 text-[#9b9c95]" /><span className="truncate">{doc.label}</span></span><span className={cn("text-[11px] font-semibold", doc.draftStatus === "final" ? "text-emerald-700" : doc.draftId ? "text-[#b65f3a]" : doc.status === "ready" ? "text-emerald-700" : doc.status === "missing" ? "text-rose-700" : "text-amber-700")}>{doc.draftStatus === "final" ? "Approved" : doc.draftId ? "Draft ready" : doc.sourceStatus === "waived" ? "Waived" : doc.sourceStatus === "signed" ? "Signed" : doc.status === "ready" ? "Received" : doc.status === "missing" ? "Missing" : "Requested"}</span>{doc.draftId && doc.draftVisibility ? <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-bold", doc.draftVisibility === "client" ? "bg-[#f2e2d8] text-[#a24f31]" : "bg-slate-100 text-slate-600")}>{doc.draftVisibility === "client" ? "Client-visible" : "Internal"}</span> : null}{doc.templateKey && doc.id && appointment.matterId ? <Button size="sm" variant="outline" disabled={Boolean(savingKey)} onClick={() => doc.draftId ? setDraftEditor({ draftId: doc.draftId!, documentId: doc.id!, name: doc.label, content: doc.draftContent ?? "", status: doc.draftStatus ?? "draft", visibility: doc.draftVisibility ?? "internal", versions: doc.versions ?? [] }) : createDraft(doc)} className="shrink-0 border-[#d8c1b4] bg-[#fffaf6] px-2 text-[11px] text-[#a24f31]">{savingKey === `draft-${doc.id}` ? "Preparing…" : doc.draftId ? "Open draft" : "Create draft"}</Button> : null}{doc.id && appointment.matterId ? <Button size="sm" variant="ghost" disabled={Boolean(savingKey)} onClick={() => runAction(`document-${doc.id}`, () => updateAppointmentDocumentAction({ matterId: appointment.matterId, documentId: doc.id!, status: doc.sourceStatus === "requested" ? "received" : doc.sourceStatus === "signed" ? "requested" : "requested" }))} className="shrink-0 px-2 text-[11px] text-[#b65f3a]">{savingKey === `document-${doc.id}` ? "Saving…" : doc.sourceStatus === "requested" ? "Mark received" : "Reopen"}</Button> : null}{doc.id && appointment.matterId && doc.sourceStatus === "requested" ? <Button size="sm" variant="ghost" disabled={Boolean(savingKey)} onClick={() => runAction(`waive-${doc.id}`, () => updateAppointmentDocumentAction({ matterId: appointment.matterId, documentId: doc.id!, status: "waived" }))} className="shrink-0 px-2 text-[11px] text-[#737872]">Waive</Button> : null}</div>)}</div></section> : null}
           {!appointment.isNote && participants.length ? <section><h3 className="text-xs font-bold uppercase tracking-[0.15em] text-[#8b8d88]">Participants</h3><div className="mt-3 space-y-2">{participants.map((participant) => <div key={participant.id} className="flex items-center gap-3 rounded-lg border border-[#e8e3da] bg-white px-3 py-2.5 text-sm"><span className="min-w-0 flex-1 truncate text-[#39443f]">{participant.displayName}{participant.isRequired ? <span className="ml-1 text-[10px] text-[#9b9d97]">required</span> : null}</span><span className={cn("text-[11px] font-semibold", participant.responseStatus === "confirmed" ? "text-emerald-700" : participant.responseStatus === "declined" ? "text-rose-700" : "text-amber-700")}>{participant.responseStatus === "confirmed" ? "Confirmed" : participant.responseStatus === "declined" ? "Declined" : "Pending"}</span><Button size="sm" variant="ghost" disabled={Boolean(savingKey)} onClick={() => runAction(`participant-${participant.id}`, () => updateAppointmentParticipantAction({ matterId: appointment.matterId, participantId: participant.id, responseStatus: participant.responseStatus === "confirmed" ? "pending" : "confirmed" }))} className="shrink-0 px-2 text-[11px] text-[#b65f3a]">{savingKey === `participant-${participant.id}` ? "Saving…" : participant.responseStatus === "confirmed" ? "Reopen" : "Confirm"}</Button></div>)}</div></section> : null}
           {error ? <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{error}</p> : null}
           <section><div className="flex items-center justify-between gap-3"><div><h3 className="text-xs font-bold uppercase tracking-[0.15em] text-[#8b8d88]">Client communication</h3><p className="mt-1 text-xs text-[#737872]">A single record of every message prepared for this appointment.</p></div><span className="rounded-full bg-[#f1eee8] px-2 py-1 text-[10px] font-bold text-[#737872]">{appointment.communications?.length ?? 0} messages</span></div><div className="mt-3 space-y-2">{appointment.communications?.length ? appointment.communications.slice(0, 4).map((communication) => <div key={communication.id} className="rounded-lg border border-[#e8e3da] bg-white px-3 py-2.5"><div className="flex items-center gap-2"><Mail className="size-3.5 text-[#b65f3a]" /><span className="min-w-0 flex-1 truncate text-xs font-semibold text-[#39443f]">{communication.subject || "Untitled email"}</span><span className={cn("text-[10px] font-bold", communication.status === "sent" ? "text-emerald-700" : communication.status === "failed" ? "text-rose-700" : communication.status === "queued" ? "text-amber-700" : "text-[#8b8d88]")}>{communication.status === "queued" ? "Queued" : communication.status === "sent" ? "Sent" : communication.status === "failed" ? "Failed" : communication.status === "cancelled" ? "Cancelled" : "Draft"}</span></div><p className="mt-1 line-clamp-2 text-[11px] leading-5 text-[#737872]">{communication.body.replace(/\s+/g, " ").trim()}</p><p className="mt-1 text-[10px] text-[#a1a39d]">{new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(communication.createdAt))}{communication.recipient ? ` · ${communication.recipient}` : ""}</p></div>) : <div className="rounded-lg border border-dashed border-[#d9d3c9] bg-[#fbfaf7] px-3 py-3 text-xs leading-5 text-[#8b8d88]">No messages yet. Start with a prepared follow-up or client packet note.</div>}</div><div className="mt-3 grid grid-cols-2 gap-2"><button type="button" onClick={() => setEmailComposer(true)} className="flex items-center justify-center gap-2 rounded-lg border border-[#e1dbd1] bg-white px-3 py-2.5 text-xs font-semibold text-[#4d5851] hover:border-[#b65f3a]"><Mail className="size-3.5" /> Email client</button><button type="button" disabled className="flex items-center justify-center gap-2 rounded-lg border border-[#e8e3da] bg-[#f1eee8] px-3 py-2.5 text-xs font-semibold text-[#a1a39d]"><MessageSquareText className="size-3.5" /> Text later</button></div><p className="mt-2 text-xs text-[#8b8d88]">Email messages can be saved as drafts or queued for provider delivery. SMS is planned next.</p></section>
-          <div className="flex items-center gap-2 border-t border-[#e8e3da] pt-4"><Button variant="outline" className="flex-1">Move appointment</Button><Button className="flex-1 bg-[#23313d] hover:bg-[#18242e]" onClick={appointment.isNote ? onClose : undefined}>{appointment.isNote ? "Close note" : "Open matter"} <ArrowUpRight /></Button></div>
+          <div className="flex items-center gap-2 border-t border-[#e8e3da] pt-4"><Button variant="outline" className="flex-1" onClick={onClose}>Close panel</Button><Button className="flex-1 bg-[#23313d] hover:bg-[#18242e]" onClick={appointment.isNote ? onClose : undefined}>{appointment.isNote ? "Close note" : "Open matter"} <ArrowUpRight /></Button></div>
         </div>
       </div>
       {draftEditor ? <DocumentDraftEditor documentName={draftEditor.name} content={draftEditor.content} status={draftEditor.status} visibility={draftEditor.visibility} versions={draftEditor.versions} saving={savingKey.startsWith("draft-")} onChange={(content) => setDraftEditor((current) => current ? { ...current, content } : current)} onClose={() => setDraftEditor(null)} onApprove={approveDraft} onReopen={reopenDraft} onSave={saveDraft} onToggleVisibility={toggleDraftVisibility} onRestoreVersion={restoreDraftVersion} /> : null}
@@ -1094,7 +1226,140 @@ function PortalCenter({ appointments, onSelect }: { appointments: Appointment[];
   return <section id="verified-portal" className="rounded-2xl border border-[#c8d8dc] bg-[#f7fbfc] shadow-sm"><div className="flex flex-col gap-4 border-b border-[#dce8ea] px-5 py-5 sm:flex-row sm:items-end sm:justify-between sm:px-6"><div><div className="flex items-center gap-2"><ShieldCheck className="size-4 text-[#385367]" /><h2 className="font-serif text-xl font-semibold text-[#23313d]">Verified client portal</h2><span className="rounded-full bg-[#e8eef0] px-2 py-0.5 text-[10px] font-bold text-[#385367]">Email OTP</span></div><p className="mt-1 max-w-xl text-xs leading-5 text-[#63747a]">Give a verified client access to approved matter information. No portal data is shown until the client confirms their email.</p></div><div className="flex items-center gap-2 text-[11px] font-semibold text-[#385367]"><span className="rounded-full bg-white px-2.5 py-1">{portalAppointments.length} eligible</span><span className="rounded-full bg-white px-2.5 py-1">{activeCount} active</span></div></div><div className="p-5 sm:p-6">{error ? <p className="mb-4 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{error}</p> : null}{portalAppointments.length ? <div className="grid gap-3 lg:grid-cols-2">{portalAppointments.map((appointment) => { const active = appointment.portalAccess?.status === "active"; return <article key={appointment.id} className="rounded-xl border border-[#dce8ea] bg-white p-4"><div className="flex items-start gap-3"><span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#e8eef0] text-[#385367]"><ShieldCheck className="size-5" /></span><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div><p className="truncate text-sm font-semibold text-[#39443f]">{appointment.client}</p><p className="mt-0.5 truncate text-[11px] text-[#8b8d88]">{appointment.matter} · {appointment.clientEmail || "Email needed"}</p></div><span className={cn("shrink-0 rounded-full px-2 py-1 text-[10px] font-bold", active ? "bg-emerald-50 text-emerald-700" : appointment.portalAccess?.status === "revoked" ? "bg-rose-50 text-rose-700" : "bg-[#f1eee8] text-[#737872]")}>{active ? "Active" : appointment.portalAccess?.status === "revoked" ? "Revoked" : "Not enabled"}</span></div></div></div><div className="mt-4 rounded-lg bg-[#f7fbfc] p-3 text-xs text-[#63747a]"><span className="font-bold uppercase tracking-[0.12em] text-[#78909a]">Client access</span><p className="mt-1">{appointment.portalAccess?.lastAccessedAt ? `Last opened ${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(appointment.portalAccess.lastAccessedAt))}` : active ? "Ready for the client to verify by email." : "No verified access is active."}</p></div><div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[#edf2f3] pt-3"><a href="/portal" target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#385367] hover:underline">Open client portal</a>{appointment.clientEmail ? active ? <Button size="sm" variant="ghost" disabled={Boolean(savingKey)} onClick={() => revoke(appointment)} className="ml-auto text-[11px] text-[#737872]">{savingKey === `revoke-${appointment.id}` ? "Revoking…" : "Revoke access"}</Button> : <Button size="sm" disabled={Boolean(savingKey)} onClick={() => enable(appointment)} className="ml-auto bg-[#385367] hover:bg-[#294351]">{savingKey === `enable-${appointment.id}` ? "Enabling…" : "Enable verified access"}<ShieldCheck /></Button> : <Button size="sm" variant="outline" onClick={() => onSelect(appointment)} className="ml-auto border-[#c8d8dc] text-[#385367]">Add client email <ArrowUpRight /></Button>}</div></article> })}</div> : <div className="rounded-xl border border-dashed border-[#c8d8dc] bg-white/70 px-5 py-8 text-center"><ShieldCheck className="mx-auto size-6 text-[#9bb2ba]" /><p className="mt-3 text-sm font-semibold text-[#4d5851]">No verified portal access yet.</p><p className="mx-auto mt-1 max-w-md text-xs leading-5 text-[#63747a]">Add a client email to an appointment, then enable access here. The client can sign in at the portal using a one-time email code.</p></div>}<p className="mt-4 text-[11px] leading-5 text-[#78909a]">Access is matter-scoped and revocable. The portal displays only attorney-approved client-visible documents and matching appointment details.</p></div></section>
 }
 
-export function MatterPilotDashboard({ matters, initialAppointments = [], initialCommunications = [], initialDeadlines = [], initialContacts = [], userName = "Maya" }: { matters: Matter[]; initialAppointments?: Appointment[]; initialCommunications?: DashboardCommunication[]; initialDeadlines?: DashboardDeadline[]; initialContacts?: DashboardContact[]; userName?: string }) {
+function PortalMessageInbox({ messages }: { messages: DashboardPortalMessage[] }) {
+  const router = useRouter()
+  const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const [sending, setSending] = useState("")
+  const [error, setError] = useState("")
+  const grouped = messages.reduce<Record<string, DashboardPortalMessage[]>>((result, message) => { (result[message.matterId] ??= []).push(message); return result }, {})
+
+  async function reply(matterId: string) {
+    const body = drafts[matterId]?.trim() ?? ""
+    if (!body) return
+    setSending(matterId)
+    setError("")
+    const result = await sendFirmPortalMessageAction({ matterId, body })
+    setSending("")
+    if (!result.ok) { setError(result.error); return }
+    setDrafts((current) => ({ ...current, [matterId]: "" }))
+    router.refresh()
+  }
+
+  return <section id="portal-messages" className="rounded-2xl border border-[#c8d8dc] bg-[#f7fbfc] shadow-sm"><div className="border-b border-[#dce8ea] px-5 py-5 sm:px-6"><div className="flex items-center gap-2"><MessageSquareText className="size-4 text-[#385367]" /><h2 className="font-serif text-xl font-semibold text-[#23313d]">Client portal messages</h2><span className="rounded-full bg-[#e8eef0] px-2 py-0.5 text-[10px] font-bold text-[#385367]">Matter-scoped</span></div><p className="mt-1 text-xs leading-5 text-[#63747a]">Reply to verified clients from the same workspace. Messages stay attached to the matter and are included in the activity trail.</p></div><div className="space-y-4 p-5 sm:p-6">{error ? <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{error}</p> : null}{Object.keys(grouped).length ? Object.entries(grouped).map(([matterId, matterMessages]) => <article key={matterId} className="rounded-xl border border-[#dce8ea] bg-white p-4"><div className="flex items-center justify-between gap-3"><div><p className="text-sm font-semibold text-[#39443f]">{matterMessages[0].matter}</p><p className="mt-0.5 text-[11px] text-[#8b8d88]">{matterMessages[matterMessages.length - 1].senderEmail}</p></div><span className="rounded-full bg-[#f1f7f8] px-2 py-1 text-[10px] font-bold text-[#385367]">{matterMessages.length} messages</span></div><div className="mt-3 space-y-2">{matterMessages.slice(-5).map((message) => <div key={message.id} className={cn("rounded-lg px-3 py-2.5 text-xs leading-5", message.senderRole === "client" ? "bg-[#fffaf6] text-[#4d5751]" : "ml-6 bg-[#e8eef0] text-[#385367]")}><p>{message.body}</p><p className="mt-1 text-[10px] opacity-60">{message.senderRole === "client" ? "Client" : "Firm"} · {new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(message.createdAt))}</p></div>)}</div><div className="mt-3 flex gap-2"><textarea value={drafts[matterId] ?? ""} onChange={(event) => setDrafts((current) => ({ ...current, [matterId]: event.target.value }))} placeholder="Reply to the client…" className="min-h-11 flex-1 rounded-lg border border-[#c8d8dc] bg-white px-3 py-2 text-xs outline-none focus:border-[#385367]" /><Button size="sm" onClick={() => void reply(matterId)} disabled={sending === matterId || !(drafts[matterId] ?? "").trim()} className="self-end bg-[#385367] hover:bg-[#294351]">{sending === matterId ? "Sending…" : "Reply"}<Send /></Button></div></article>) : <div className="rounded-xl border border-dashed border-[#c8d8dc] bg-white/70 px-5 py-8 text-center"><MessageSquareText className="mx-auto size-6 text-[#9bb2ba]" /><p className="mt-3 text-sm font-semibold text-[#4d5751]">No client messages yet.</p><p className="mt-1 text-xs text-[#63747a]">Verified portal conversations will appear here when clients write in.</p></div>}</div></section>
+}
+
+function PortalDocumentRequestCenter({ matters, requests }: { matters: Matter[]; requests: DashboardPortalDocumentRequest[] }) {
+  const router = useRouter()
+  const [matterId, setMatterId] = useState(matters[0]?.id ?? "")
+  const [title, setTitle] = useState("")
+  const [description, setDescription] = useState("")
+  const [saving, setSaving] = useState("")
+  const [error, setError] = useState("")
+
+  async function createRequest() {
+    if (!matterId || !title.trim()) return
+    setSaving("create")
+    setError("")
+    const result = await createClientPortalDocumentRequestAction({ matterId, title, description })
+    setSaving("")
+    if (!result.ok) { setError(result.error); return }
+    setTitle("")
+    setDescription("")
+    router.refresh()
+  }
+
+  async function review(request: DashboardPortalDocumentRequest, status: "approved" | "rejected") {
+    setSaving(`${status}-${request.id}`)
+    setError("")
+    const result = await reviewClientPortalDocumentAction({ matterId: request.matterId, requestId: request.id, status })
+    setSaving("")
+    if (!result.ok) { setError(result.error); return }
+    router.refresh()
+  }
+
+  async function download(request: DashboardPortalDocumentRequest) {
+    setSaving(`download-${request.id}`)
+    setError("")
+    const result = await createClientPortalDocumentDownloadUrlAction(request.id)
+    setSaving("")
+    if (!result.ok) { setError(result.error); return }
+    window.open(result.url, "_blank", "noopener,noreferrer")
+  }
+
+  const statusClass = (status: DashboardPortalDocumentRequest["status"]) => status === "approved" ? "bg-emerald-50 text-emerald-700" : status === "uploaded" ? "bg-sky-50 text-sky-700" : status === "rejected" ? "bg-rose-50 text-rose-700" : "bg-amber-50 text-amber-700"
+
+  return <section id="portal-documents" className="rounded-2xl border border-[#d8c7bb] bg-[#fffaf6] shadow-sm"><div className="border-b border-[#eadbd0] px-5 py-5 sm:px-6"><div className="flex items-center gap-2"><FileText className="size-4 text-[#a24f31]" /><h2 className="font-serif text-xl font-semibold text-[#23313d]">Client document requests</h2><span className="rounded-full bg-[#f2e2d8] px-2 py-0.5 text-[10px] font-bold text-[#8b604c]">Portal workflow</span></div><p className="mt-1 max-w-2xl text-xs leading-5 text-[#8b6f60]">Ask a client for a file, review what they upload, and keep the request attached to the matter. Uploads remain private until a team member approves them.</p></div><div className="grid gap-5 p-5 sm:p-6 xl:grid-cols-[340px_minmax(0,1fr)]"><div className="rounded-xl border border-[#eadbd0] bg-white p-4"><p className="text-xs font-bold uppercase tracking-[0.14em] text-[#8b604c]">New request</p><label className="mt-4 block text-[11px] font-semibold text-[#6c716c]">Matter<select value={matterId} onChange={(event) => setMatterId(event.target.value)} className="mt-1 h-9 w-full rounded-lg border border-[#ded9d0] bg-white px-2 text-xs font-normal text-[#39443f]"><option value="">Select a matter</option>{matters.map((matter) => <option key={matter.id} value={matter.id}>{matter.name}</option>)}</select></label><label className="mt-3 block text-[11px] font-semibold text-[#6c716c]">What do you need?<Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Photo ID, police report, lease…" className="mt-1 h-9 border-[#ded9d0] text-xs font-normal" /></label><label className="mt-3 block text-[11px] font-semibold text-[#6c716c]">Instructions <textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Add context or file requirements" className="mt-1 min-h-20 w-full rounded-lg border border-[#ded9d0] bg-white px-3 py-2 text-xs font-normal outline-none focus:border-[#a24f31]" /></label>{error ? <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{error}</p> : null}<Button size="sm" onClick={() => void createRequest()} disabled={saving === "create" || !matterId || !title.trim()} className="mt-3 w-full bg-[#a24f31] hover:bg-[#8f432a]">{saving === "create" ? "Creating…" : "Create request"}<Plus /></Button></div><div className="space-y-3">{requests.length ? requests.map((request) => <article key={request.id} className="rounded-xl border border-[#eadbd0] bg-white p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-sm font-semibold text-[#39443f]">{request.title}</p><p className="mt-0.5 text-[11px] text-[#8b8d88]">{request.matter}{request.description ? ` · ${request.description}` : ""}</p></div><span className={cn("rounded-full px-2 py-1 text-[10px] font-bold capitalize", statusClass(request.status))}>{request.status}</span></div>{request.fileName ? <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg bg-[#fffaf6] px-3 py-2 text-xs"><FileText className="size-3.5 text-[#a24f31]" /><span className="min-w-0 flex-1 truncate font-semibold text-[#4d5851]">{request.fileName}</span>{request.sizeBytes ? <span className="text-[10px] text-[#8b8d88]">{Math.max(1, Math.round(request.sizeBytes / 1024))} KB</span> : null}<Button size="sm" variant="ghost" onClick={() => void download(request)} disabled={saving === `download-${request.id}`} className="h-7 px-2 text-[11px] text-[#a24f31]">{saving === `download-${request.id}` ? "…" : "Review file"}</Button></div> : <p className="mt-3 rounded-lg bg-[#fbfaf7] px-3 py-2 text-xs text-[#8b8d88]">Waiting for the client to upload this document.</p>}{request.reviewerNote ? <p className="mt-2 text-[11px] text-[#8b604c]">Note: {request.reviewerNote}</p> : null}{request.status === "uploaded" ? <div className="mt-3 flex flex-wrap gap-2 border-t border-[#f0e5dd] pt-3"><Button size="sm" onClick={() => void review(request, "approved")} disabled={Boolean(saving)} className="bg-[#385367] hover:bg-[#294351]">Approve upload <Check /></Button><Button size="sm" variant="outline" onClick={() => void review(request, "rejected")} disabled={Boolean(saving)} className="border-[#d8c7bb] text-[#a24f31]">Request replacement</Button></div> : null}</article>) : <div className="rounded-xl border border-dashed border-[#d9c5b7] bg-white/70 px-5 py-10 text-center"><FileText className="mx-auto size-6 text-[#c8a897]" /><p className="mt-3 text-sm font-semibold text-[#4d5851]">No document requests yet.</p><p className="mt-1 text-xs text-[#8b8d88]">Create a request and it will appear in the client portal immediately.</p></div>}</div></div></section>
+}
+
+type DraftAvailabilityRule = { weekday: number; startTime: string; endTime: string; timezone: string }
+
+const availabilityDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+function defaultAvailabilityRules(): DraftAvailabilityRule[] {
+  return availabilityDays.slice(0, 5).map((_, index) => ({ weekday: index + 1, startTime: "09:00", endTime: "17:00", timezone: "America/Chicago" }))
+}
+
+function AvailabilityCenter({ matters, rules, blackouts }: { matters: Matter[]; rules: DashboardAvailabilityRule[]; blackouts: DashboardBlackout[] }) {
+  const router = useRouter()
+  const [matterId, setMatterId] = useState(matters[0]?.id ?? "")
+  const [draftRulesByMatter, setDraftRulesByMatter] = useState<Record<string, DraftAvailabilityRule[]>>({})
+  const [saving, setSaving] = useState("")
+  const [error, setError] = useState("")
+  const [blackoutDate, setBlackoutDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [blackoutStart, setBlackoutStart] = useState("12:00")
+  const [blackoutEnd, setBlackoutEnd] = useState("13:00")
+  const [blackoutReason, setBlackoutReason] = useState("Personal block")
+
+  const savedRules = rules.filter((rule) => rule.matterId === matterId)
+  const draftRules = draftRulesByMatter[matterId] ?? (savedRules.length ? savedRules.map((rule) => ({ weekday: rule.weekday, startTime: rule.startTime, endTime: rule.endTime, timezone: rule.timezone })) : defaultAvailabilityRules())
+
+  function setDraftRules(update: DraftAvailabilityRule[] | ((current: DraftAvailabilityRule[]) => DraftAvailabilityRule[])) {
+    setDraftRulesByMatter((current) => ({ ...current, [matterId]: typeof update === "function" ? update(draftRules) : update }))
+  }
+
+  const matterBlackouts = blackouts.filter((blackout) => blackout.matterId === matterId)
+
+  function toggleDay(weekday: number) {
+    setDraftRules((current) => current.some((rule) => rule.weekday === weekday) ? current.filter((rule) => rule.weekday !== weekday) : [...current, { weekday, startTime: "09:00", endTime: "17:00", timezone: "America/Chicago" }].sort((a, b) => a.weekday - b.weekday))
+  }
+
+  function updateRule(weekday: number, field: "startTime" | "endTime" | "timezone", value: string) {
+    setDraftRules((current) => current.map((rule) => rule.weekday === weekday ? { ...rule, [field]: value } : rule))
+  }
+
+  async function saveRules() {
+    if (!matterId) return
+    setSaving("rules")
+    setError("")
+    const result = await saveCalendarAvailabilityAction({ matterId, rules: draftRules })
+    setSaving("")
+    if (!result.ok) { setError(result.error); return }
+    router.refresh()
+  }
+
+  async function addBlackout() {
+    if (!matterId) return
+    setSaving("blackout")
+    setError("")
+    const result = await createCalendarBlackoutAction({ matterId, startsAt: new Date(`${blackoutDate}T${blackoutStart}:00`).toISOString(), endsAt: new Date(`${blackoutDate}T${blackoutEnd}:00`).toISOString(), reason: blackoutReason })
+    setSaving("")
+    if (!result.ok) { setError(result.error); return }
+    router.refresh()
+  }
+
+  async function cancelBlackout(blackoutId: string) {
+    setSaving(blackoutId)
+    setError("")
+    const result = await cancelCalendarBlackoutAction({ matterId, blackoutId })
+    setSaving("")
+    if (!result.ok) { setError(result.error); return }
+    router.refresh()
+  }
+
+  return <section id="availability" className="rounded-2xl border border-[#d5c8b9] bg-[#fffaf6] shadow-sm"><div className="flex flex-col gap-4 border-b border-[#eadbd0] px-5 py-5 sm:flex-row sm:items-end sm:justify-between sm:px-6"><div><div className="flex items-center gap-2"><Clock3 className="size-4 text-[#a24f31]" /><h2 className="font-serif text-xl font-semibold text-[#23313d]">Availability & blocked time</h2><span className="rounded-full bg-[#f2e2d8] px-2 py-0.5 text-[10px] font-bold text-[#8b604c]">Booking rules</span></div><p className="mt-1 max-w-xl text-xs leading-5 text-[#8b6f60]">Set the hours public booking can offer. MatterPilot rejects overlaps and blocked windows before creating a request or hold.</p></div>{matters.length ? <select value={matterId} onChange={(event) => setMatterId(event.target.value)} className="h-10 rounded-lg border border-[#d8c7bb] bg-white px-3 text-xs font-semibold text-[#4d5851] outline-none focus:border-[#a24f31]">{matters.map((matter) => <option key={matter.id} value={matter.id}>{matter.name}</option>)}</select> : null}</div><div className="grid gap-6 p-5 sm:p-6 xl:grid-cols-[minmax(0,1fr)_360px]"><div><div className="space-y-2">{availabilityDays.map((day, index) => { const rule = draftRules.find((item) => item.weekday === index + 1); return <div key={day} className={cn("grid items-center gap-2 rounded-xl border p-3 sm:grid-cols-[130px_1fr_1fr_150px]", rule ? "border-[#eadbd0] bg-white" : "border-[#eee5dc] bg-[#fbfaf7]")}><label className="flex items-center gap-2 text-xs font-semibold text-[#4d5851]"><input type="checkbox" checked={Boolean(rule)} onChange={() => toggleDay(index + 1)} className="size-4 accent-[#a24f31]" />{day}</label>{rule ? <><label className="text-[11px] text-[#8b8d88]">From<input type="time" value={rule.startTime} onChange={(event) => updateRule(index + 1, "startTime", event.target.value)} className="mt-1 h-9 w-full rounded-lg border border-[#ded9d0] bg-white px-2 text-xs text-[#39443f]" /></label><label className="text-[11px] text-[#8b8d88]">To<input type="time" value={rule.endTime} onChange={(event) => updateRule(index + 1, "endTime", event.target.value)} className="mt-1 h-9 w-full rounded-lg border border-[#ded9d0] bg-white px-2 text-xs text-[#39443f]" /></label><select value={rule.timezone} onChange={(event) => updateRule(index + 1, "timezone", event.target.value)} className="h-9 rounded-lg border border-[#ded9d0] bg-white px-2 text-xs text-[#39443f] sm:mt-4"><option value="America/Chicago">Central</option><option value="America/New_York">Eastern</option><option value="America/Denver">Mountain</option><option value="America/Los_Angeles">Pacific</option></select></> : <span className="text-xs text-[#aaa9a3] sm:col-span-3">Unavailable for booking</span>}</div> })}</div><div className="mt-4 flex flex-wrap items-center justify-between gap-3"><p className="text-[11px] text-[#8b8d88]">Times are shown to clients in the configured time zone.</p><Button size="sm" onClick={saveRules} disabled={Boolean(saving) || !matterId} className="bg-[#a24f31] hover:bg-[#8f432a]">{saving === "rules" ? "Saving…" : "Save availability"}<Check /></Button></div></div><aside className="rounded-xl border border-[#eadbd0] bg-white p-4"><p className="text-xs font-bold uppercase tracking-[0.14em] text-[#8b604c]">Block time</p><p className="mt-1 text-xs leading-5 text-[#8b8d88]">Use this for court, lunch, travel, or personal time. Existing appointments remain visible and are never silently moved.</p><div className="mt-4 grid grid-cols-2 gap-2"><label className="text-[11px] text-[#8b8d88]">Date<input type="date" value={blackoutDate} onChange={(event) => setBlackoutDate(event.target.value)} className="mt-1 h-9 w-full rounded-lg border border-[#ded9d0] px-2 text-xs" /></label><label className="text-[11px] text-[#8b8d88]">Reason<input value={blackoutReason} onChange={(event) => setBlackoutReason(event.target.value)} className="mt-1 h-9 w-full rounded-lg border border-[#ded9d0] px-2 text-xs" /></label><label className="text-[11px] text-[#8b8d88]">Start<input type="time" value={blackoutStart} onChange={(event) => setBlackoutStart(event.target.value)} className="mt-1 h-9 w-full rounded-lg border border-[#ded9d0] px-2 text-xs" /></label><label className="text-[11px] text-[#8b8d88]">End<input type="time" value={blackoutEnd} onChange={(event) => setBlackoutEnd(event.target.value)} className="mt-1 h-9 w-full rounded-lg border border-[#ded9d0] px-2 text-xs" /></label></div><Button size="sm" onClick={addBlackout} disabled={Boolean(saving) || !matterId || !blackoutReason.trim()} className="mt-3 w-full bg-[#23313d] hover:bg-[#18242e]">{saving === "blackout" ? "Blocking…" : "Block time"}</Button>{error ? <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{error}</p> : null}<div className="mt-5 space-y-2 border-t border-[#eee5dc] pt-4">{matterBlackouts.length ? matterBlackouts.map((blackout) => <div key={blackout.id} className="flex items-center gap-2 rounded-lg bg-[#fbfaf7] p-2.5 text-[11px]"><span className="min-w-0 flex-1"><span className="block truncate font-semibold text-[#4d5851]">{blackout.reason}</span><span className="mt-0.5 block text-[#8b8d88]">{new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(blackout.startsAt))} – {new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(new Date(blackout.endsAt))}</span></span><button type="button" onClick={() => cancelBlackout(blackout.id)} disabled={Boolean(saving)} className="shrink-0 font-semibold text-[#a24f31] hover:underline">{saving === blackout.id ? "…" : "Remove"}</button></div>) : <p className="text-xs text-[#aaa9a3]">No active blocked windows.</p>}</div></aside></div></section>
+}
+
+export function MatterPilotDashboard({ matters, initialAppointments = [], initialCommunications = [], initialDeadlines = [], initialContacts = [], initialAvailabilityRules = [], initialBlackouts = [], initialPortalMessages = [], initialPortalDocumentRequests = [], userName = "Maya" }: { matters: Matter[]; initialAppointments?: Appointment[]; initialCommunications?: DashboardCommunication[]; initialDeadlines?: DashboardDeadline[]; initialContacts?: DashboardContact[]; initialAvailabilityRules?: DashboardAvailabilityRule[]; initialBlackouts?: DashboardBlackout[]; initialPortalMessages?: DashboardPortalMessage[]; initialPortalDocumentRequests?: DashboardPortalDocumentRequest[]; userName?: string }) {
 
   const [showNew, setShowNew] = useState(false)
   const [selectedSlot, setSelectedSlot] = useState<AppointmentSlot | undefined>()
@@ -1111,6 +1376,12 @@ export function MatterPilotDashboard({ matters, initialAppointments = [], initia
   function openNewAppointment(slot?: AppointmentSlot) {
     setSelectedSlot(slot)
     setShowNew(true)
+  }
+
+  async function moveAppointmentFromCalendar(appointment: Appointment, startsAt: string, endsAt: string): Promise<CalendarMoveResult> {
+    const result = await rescheduleAppointmentAction({ matterId: appointment.matterId, appointmentId: appointment.id, startsAt, endsAt, reason: "Moved from calendar view" })
+    if (result.ok) router.refresh()
+    return result
   }
 
   const nav = [
@@ -1143,10 +1414,12 @@ export function MatterPilotDashboard({ matters, initialAppointments = [], initia
             <section className="grid gap-3 sm:grid-cols-3"><div className="rounded-xl border border-[#ded9d0] bg-[#fbfaf7] p-4"><div className="flex items-center justify-between"><span className="flex items-center gap-2 text-xs font-semibold text-[#5c665f]"><span className="size-2 rounded-full bg-emerald-500" /> Ready</span><CheckCircle2 className="size-4 text-emerald-600" /></div><p className="mt-3 text-2xl font-semibold text-[#23313d]">{appointments.filter((a) => a.readiness === "ready").length}</p><p className="mt-1 text-xs text-[#8b8d88]">Fully prepared events</p></div><div className="rounded-xl border border-[#ded9d0] bg-[#fbfaf7] p-4"><div className="flex items-center justify-between"><span className="flex items-center gap-2 text-xs font-semibold text-[#5c665f]"><span className="size-2 rounded-full bg-amber-500" /> At risk</span><AlarmClock className="size-4 text-amber-600" /></div><p className="mt-3 text-2xl font-semibold text-[#23313d]">{atRisk}</p><p className="mt-1 text-xs text-[#8b8d88]">Missing a preparation step</p></div><div className="rounded-xl border border-[#ded9d0] bg-[#fbfaf7] p-4"><div className="flex items-center justify-between"><span className="flex items-center gap-2 text-xs font-semibold text-[#5c665f]"><span className="size-2 rounded-full bg-rose-500" /> Blocked</span><ShieldCheck className="size-4 text-rose-600" /></div><p className="mt-3 text-2xl font-semibold text-[#23313d]">{blocked}</p><p className="mt-1 text-xs text-[#8b8d88]">Needs owner attention</p></div></section>
 
             <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-              <CalendarBoard appointments={filteredAppointments} onSelect={setSelectedAppointment} onCreate={openNewAppointment} />
+              <CalendarBoardEnhanced appointments={filteredAppointments} onSelect={setSelectedAppointment} onCreate={openNewAppointment} onMove={moveAppointmentFromCalendar} />
 
               <div id="tasks" className="rounded-2xl border border-[#ded9d0] bg-[#fbfaf7] shadow-sm"><div className="flex items-start justify-between border-b border-[#e8e3da] px-5 py-4"><div><h2 className="font-serif text-xl font-semibold text-[#23313d]">Needs attention</h2><p className="mt-1 text-xs text-[#8b8d88]">The next best actions for your team</p></div><button type="button" className="rounded-lg p-2 text-[#8b8d88] hover:bg-[#eeeae3]" aria-label="More actions"><MoreHorizontal className="size-4" /></button></div>{appointments.filter((appointment) => appointment.readiness !== "ready").map((appointment) => <ReadinessCard key={appointment.id} appointment={appointment} onSelect={() => setSelectedAppointment(appointment)} />)}<div className="border-t border-[#e8e3da] px-5 py-4"><a href="#tasks" className="flex items-center gap-2 text-xs font-semibold text-[#b65f3a] hover:underline">View all tasks <ArrowUpRight className="size-3.5" /></a></div></div>
             </section>
+
+            <AvailabilityCenter matters={matters} rules={initialAvailabilityRules} blackouts={initialBlackouts} />
 
             <CommunicationCenter communications={initialCommunications} />
 
@@ -1155,6 +1428,10 @@ export function MatterPilotDashboard({ matters, initialAppointments = [], initia
             <ContactCenter matters={matters} contacts={initialContacts} />
             <PacketCenter appointments={appointments} onSelect={setSelectedAppointment} onCreate={() => openNewAppointment()} />
             <PortalCenter appointments={appointments} onSelect={setSelectedAppointment} />
+            <PortalMessageInbox messages={initialPortalMessages} />
+            <PortalDocumentRequestCenter matters={matters} requests={initialPortalDocumentRequests} />
+
+            <section className="rounded-2xl border border-[#ded9d0] bg-[#fbfaf7] p-5 shadow-sm sm:p-6"><div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div><div className="flex items-center gap-2"><CalendarDays className="size-4 text-[#a24f31]" /><h2 className="font-serif text-xl font-semibold text-[#23313d]">Calendar sharing</h2></div><p className="mt-1 max-w-xl text-xs leading-5 text-[#8b8d88]">Download an up-to-date calendar file for appointments and notes, then import it into your preferred calendar app.</p></div><a href="/api/matterpilot/calendar" className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[#23313d] px-3.5 text-xs font-semibold text-white transition-colors hover:bg-[#18242e]">Download .ics calendar <ArrowUpRight className="size-3.5" /></a></div></section>
 
             <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]"><div className="rounded-2xl border border-[#ded9d0] bg-[#fbfaf7] p-5 shadow-sm"><div className="flex items-center justify-between"><div><h2 className="font-serif text-xl font-semibold text-[#23313d]">Your matters</h2><p className="mt-1 text-xs text-[#8b8d88]">Every appointment has a home</p></div><Link href="/matters" className="text-xs font-semibold text-[#b65f3a] hover:underline">View all matters <ArrowUpRight className="ml-1 inline size-3" /></Link></div><div className="mt-5 grid gap-3 sm:grid-cols-2">{(matters.length > 0 ? matters.slice(0, 4) : [{ id: "demo", name: "Harlow v. Green", matter_number: "DEMO-001", case_mode: "civil_defense", status: "active" }]).map((matter, index) => <Link href={matter.id === "demo" ? "/matters" : `/matters/${matter.id}`} key={matter.id} className="group flex items-center gap-3 rounded-xl border border-[#e6e0d7] bg-white p-3 transition-colors hover:border-[#c08a6d] hover:bg-[#fffaf6]"><span className={cn("flex size-9 items-center justify-center rounded-lg text-xs font-bold", index % 2 === 0 ? "bg-[#e8eef0] text-[#385367]" : "bg-[#f4e5db] text-[#955033]")}><Gavel className="size-4" /></span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-[#35433e]">{matter.name}</span><span className="mt-0.5 block text-[11px] text-[#8b8d88]">{matter.matter_number} · {matter.status}</span></span><ArrowUpRight className="size-4 text-[#a6a9a2] transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" /></Link>)}</div></div><div className="rounded-2xl border border-[#d5c8b9] bg-[#ead9c4] p-5 shadow-sm"><div className="flex items-center gap-2 text-[#6f4f3c]"><Link2 className="size-4" /><span className="text-xs font-bold uppercase tracking-[0.16em]">Public booking</span></div><h2 className="mt-4 font-serif text-2xl font-semibold leading-tight text-[#3b3029]">Let clients book the right time.</h2><p className="mt-2 text-sm leading-6 text-[#705d50]">Share a branded intake link that checks conflicts and collects the basics before a consultation lands on your calendar.</p><Link href="/book/demo" className="mt-5 inline-flex h-9 items-center gap-2 rounded-lg bg-[#3b3029] px-3.5 text-sm font-semibold text-[#fffaf4] transition-colors hover:bg-[#514238]">Preview booking link <ArrowUpRight className="size-4" /></Link></div></section>
           </div>

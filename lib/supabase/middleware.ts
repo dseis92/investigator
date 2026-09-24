@@ -1,16 +1,21 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { getPublicEnv } from '@/lib/env'
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
   })
+  if (request.nextUrl.pathname === '/api/health') {
+    return supabaseResponse
+  }
+  const env = getPublicEnv()
 
   // With Fluid compute, don't put this client in a global environment
   // variable. Always create a new one on each request.
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    env.NEXT_PUBLIC_SUPABASE_URL,
+    env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
     {
       cookies: {
         getAll() {
@@ -43,6 +48,8 @@ export async function updateSession(request: NextRequest) {
     !request.nextUrl.pathname.startsWith('/login') &&
     !request.nextUrl.pathname.startsWith('/auth') &&
     !request.nextUrl.pathname.startsWith('/book') &&
+    !request.nextUrl.pathname.startsWith('/prepare') &&
+    !request.nextUrl.pathname.startsWith('/portal') &&
     // the OAuth consent route sends unauthenticated visitors to the login page
     // itself, so that it can preserve the authorization in the `next` parameter
     request.nextUrl.pathname !== '/oauth/consent'

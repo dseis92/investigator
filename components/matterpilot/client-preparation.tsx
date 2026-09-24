@@ -10,7 +10,13 @@ import { Input } from "@/components/ui/input"
 export type ClientPacketData = {
   packet: { id: string; expiresAt: string; status: string }
   appointment: { title: string; startsAt: string; endsAt: string; location: string; clientName: string }
-  documents: { name: string; content: string; status: string }[]
+  documents: {
+    name: string
+    content: string
+    status: string
+    fields?: { key: string; label: string; type: "text" | "email" | "date" | "textarea"; required: boolean; value: string }[]
+    signature?: { id: string; status: "requested" | "signed"; required: boolean; signerName: string | null }
+  }[]
 }
 
 function formatAppointmentDate(value: string) {
@@ -29,6 +35,9 @@ export function ClientPreparationPage({ token, packet }: { token: string; packet
   const [summary, setSummary] = useState("")
   const [goals, setGoals] = useState("")
   const [deadlines, setDeadlines] = useState("")
+  const [fieldValues, setFieldValues] = useState<Record<string, string>>(() => Object.fromEntries((packet?.documents ?? []).flatMap((document) => (document.fields ?? []).map((field) => [field.key, field.value]))))
+  const [signatureName, setSignatureName] = useState("")
+  const [signatureConsent, setSignatureConsent] = useState(false)
   const [acknowledged, setAcknowledged] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
@@ -69,7 +78,7 @@ export function ClientPreparationPage({ token, packet }: { token: string; packet
   async function submit() {
     setSubmitting(true)
     setError("")
-    const result = await submitClientPacketAction({ token, fullName, email, phone, summary, goals, deadlines, engagementAcknowledged: acknowledged })
+    const result = await submitClientPacketAction({ token, fullName, email, phone, summary, goals, deadlines, engagementAcknowledged: acknowledged, fieldValues: { ...fieldValues, full_name: fullName, email, phone, matter_overview: summary, desired_outcome: goals, deadlines }, signatureName, signatureConsent })
     setSubmitting(false)
     if (!result.ok) {
       setError(result.error)
@@ -80,6 +89,12 @@ export function ClientPreparationPage({ token, packet }: { token: string; packet
 
   const intakeDocument = packet.documents.find((document) => document.name === "Intake questionnaire")
   const engagementDocument = packet.documents.find((document) => document.name === "Engagement letter")
+  const signatureRequired = engagementDocument?.signature?.status === "requested"
+
+  function renderFields(document: ClientPacketData["documents"][number]) {
+    if (!document.fields?.length) return null
+    return <div className="space-y-4 border-t border-[#eeeae3] px-4 py-4"><div><p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#b65f3a]">Fillable fields</p><p className="mt-1 text-xs leading-5 text-[#8b8d88]">These answers will be attached to this preparation document for the firm to review.</p></div>{document.fields.map((field) => <label key={field.key} className="block"><span className="mb-1.5 block text-xs font-semibold text-[#5e655f]">{field.label}{field.required ? <span className="ml-1 text-[#b65f3a]">*</span> : null}</span>{field.type === "textarea" ? <textarea value={fieldValues[field.key] ?? ""} onChange={(event) => setFieldValues((current) => ({ ...current, [field.key]: event.target.value }))} className="min-h-20 w-full rounded-lg border border-[#ddd8d0] bg-white px-3 py-2 text-sm outline-none placeholder:text-[#a1a39d] focus:border-[#b65f3a]" /> : <Input type={field.type} value={fieldValues[field.key] ?? ""} onChange={(event) => setFieldValues((current) => ({ ...current, [field.key]: event.target.value }))} />}</label>)}</div>
+  }
 
   return (
     <div className="min-h-svh bg-[#f4f1eb] text-[#23313d]">
@@ -99,12 +114,12 @@ export function ClientPreparationPage({ token, packet }: { token: string; packet
           <section className="rounded-2xl border border-[#ded9d0] bg-[#fbfaf7] p-5 shadow-xl shadow-[#23313d]/5 sm:p-8">
             <div className="border-b border-[#e8e3da] pb-5"><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#b65f3a]">Client preparation packet</p><h2 className="mt-2 font-serif text-2xl font-semibold">Tell us what we should know.</h2><p className="mt-1 text-sm leading-6 text-[#737872]">Required fields are marked by the form. You may leave anything uncertain blank and discuss it during the appointment.</p></div>
             <div className="mt-6 space-y-6">
-              {intakeDocument ? <details open className="rounded-xl border border-[#e4ded5] bg-white"><summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3"><FileText className="size-4 text-[#b65f3a]" /><span className="flex-1 text-sm font-semibold">Intake questionnaire</span><span className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#8b8d88]">Required</span></summary><div className="border-t border-[#eeeae3] px-4 py-3"><p className="whitespace-pre-wrap text-[11px] leading-5 text-[#737872]">{intakeDocument.content}</p></div></details> : null}
+              {intakeDocument ? <details open className="rounded-xl border border-[#e4ded5] bg-white"><summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3"><FileText className="size-4 text-[#b65f3a]" /><span className="flex-1 text-sm font-semibold">Intake questionnaire</span><span className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#8b8d88]">Required</span></summary><div className="border-t border-[#eeeae3] px-4 py-3"><p className="whitespace-pre-wrap text-[11px] leading-5 text-[#737872]">{intakeDocument.content}</p></div>{renderFields(intakeDocument)}</details> : null}
               <div className="space-y-4"><div className="grid gap-4 sm:grid-cols-2"><label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#5e655f]">Full name</span><Input value={fullName} onChange={(event) => setFullName(event.target.value)} placeholder="Your full name" /></label><label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#5e655f]">Email address</span><Input value={email} onChange={(event) => setEmail(event.target.value)} type="email" placeholder="you@example.com" /></label></div><label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#5e655f]">Phone number <span className="font-normal text-[#9b9d97]">(optional)</span></span><Input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="(555) 555-5555" /></label><label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#5e655f]">What happened?</span><textarea value={summary} onChange={(event) => setSummary(event.target.value)} className="min-h-24 w-full rounded-lg border border-[#ddd8d0] bg-white px-3 py-2 text-sm outline-none placeholder:text-[#a1a39d] focus:border-[#b65f3a]" placeholder="Share the main facts in your own words." /></label><label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#5e655f]">What would you like help with?</span><textarea value={goals} onChange={(event) => setGoals(event.target.value)} className="min-h-20 w-full rounded-lg border border-[#ddd8d0] bg-white px-3 py-2 text-sm outline-none placeholder:text-[#a1a39d] focus:border-[#b65f3a]" placeholder="What outcome are you hoping for?" /></label><label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#5e655f]">Deadlines or urgent concerns <span className="font-normal text-[#9b9d97]">(optional)</span></span><textarea value={deadlines} onChange={(event) => setDeadlines(event.target.value)} className="min-h-20 w-full rounded-lg border border-[#ddd8d0] bg-white px-3 py-2 text-sm outline-none placeholder:text-[#a1a39d] focus:border-[#b65f3a]" placeholder="Court dates, notices, or anything time-sensitive." /></label></div>
-              {engagementDocument ? <details className="rounded-xl border border-[#e4ded5] bg-white"><summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3"><FileText className="size-4 text-[#b65f3a]" /><span className="flex-1 text-sm font-semibold">Engagement letter</span><span className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#8b8d88]">Review</span></summary><div className="border-t border-[#eeeae3] px-4 py-3"><p className="whitespace-pre-wrap text-[11px] leading-5 text-[#737872]">{engagementDocument.content}</p></div></details> : null}
+              {engagementDocument ? <details className="rounded-xl border border-[#e4ded5] bg-white"><summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3"><FileText className="size-4 text-[#b65f3a]" /><span className="flex-1 text-sm font-semibold">Engagement letter</span><span className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#8b8d88]">{signatureRequired ? "Signature requested" : "Review"}</span></summary><div className="border-t border-[#eeeae3] px-4 py-3"><p className="whitespace-pre-wrap text-[11px] leading-5 text-[#737872]">{engagementDocument.content}</p></div>{renderFields(engagementDocument)}{signatureRequired ? <div className="border-t border-[#eeeae3] px-4 py-4"><div className="rounded-xl border border-[#d8c7bb] bg-[#fffaf6] p-4"><p className="text-xs font-bold uppercase tracking-[0.14em] text-[#8b604c]">Signature attestation</p><p className="mt-1 text-xs leading-5 text-[#737872]">The firm has requested a typed-name attestation for this engagement-letter draft. This is not a third-party e-signature service.</p><label className="mt-3 block"><span className="mb-1.5 block text-xs font-semibold text-[#5e655f]">Type your full name</span><Input value={signatureName} onChange={(event) => setSignatureName(event.target.value)} placeholder="Your legal name" /></label><label className="mt-3 flex items-start gap-3 text-xs leading-5 text-[#5e655f]"><input type="checkbox" checked={signatureConsent} onChange={(event) => setSignatureConsent(event.target.checked)} className="mt-1 size-4 accent-[#b65f3a]" /><span>I agree that my typed name is an electronic signature attestation for this document and I consent to the firm recording the time and document version.</span></label></div></div> : null}</details> : null}
               <label className="flex items-start gap-3 rounded-xl border border-[#e4ded5] bg-[#f8f5ef] p-4"><input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} className="mt-1 size-4 accent-[#b65f3a]" /><span className="text-xs leading-5 text-[#5e655f]">I confirm that the information above is accurate to the best of my knowledge, and I acknowledge that the engagement terms are for review. I understand that representation begins only when the firm accepts the engagement.</span></label>
               {error ? <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{error}</p> : null}
-              <Button className="w-full bg-[#b65f3a] hover:bg-[#9f5030]" disabled={submitting || !fullName.trim() || !email.trim() || !acknowledged} onClick={submit}>{submitting ? "Submitting securely…" : "Submit preparation packet"} <Check /></Button>
+              <Button className="w-full bg-[#b65f3a] hover:bg-[#9f5030]" disabled={submitting || !fullName.trim() || !email.trim() || !acknowledged || (signatureRequired && (!signatureName.trim() || !signatureConsent))} onClick={submit}>{submitting ? "Submitting securely…" : "Submit preparation packet"} <Check /></Button>
               <p className="text-center text-[11px] leading-5 text-[#9b9d97]">This link expires {new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric", year: "numeric" }).format(new Date(packet.packet.expiresAt))} and can be used once.</p>
             </div>
           </section>

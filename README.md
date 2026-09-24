@@ -17,7 +17,7 @@ npm install
 npm run dev
 ```
 
-Requires `.env.local` with `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, and (for seeding only) `SUPABASE_SERVICE_ROLE_KEY` — see `.env.local` locally, it's gitignored and never committed.
+Requires `.env.local` with the variables listed in [.env.example](.env.example). The browser uses the Supabase URL and publishable key; the service-role key is server-only and used by the seed script and live security tests. OpenAI variables enable assisted analysis and are optional until that workflow is enabled.
 
 Schema lives in `supabase/migrations`. Push it to the linked Supabase project with:
 
@@ -41,10 +41,14 @@ npm run lint
 npm run build
 ```
 
+The deployment health check is available at `/api/health`. It reports only whether required integrations are configured; it never returns secret values.
+
+The ordered product plan is tracked in [ROADMAP.md](ROADMAP.md).
+
 ## Implemented (first vertical slice)
 
 Create Matter → Add Question → Add Subject → Capture Evidence → Build Timeline → Link Proposition → Compare Contradiction → Export Cited Report, across all 6 core screens: Matter Command Center, Question & Proposition Workspace, Subject & Entity Profiles, Evidence Ledger, Timeline, Contradiction & Adversarial Review, plus a printable Proposition Evidence Matrix report.
 
 ## Deferred
 
-AI-generated analysis (data model is ready; v1 is human-authored only), the other 5 report types (visible as "Planned"), real file/blob upload of evidence artifacts, granular per-field permissions beyond the 6 matter-member roles, and DB-trigger-enforced audit logging.
+The remaining report types (visible as "Planned"), Google/Outlook calendar OAuth synchronization, transactional email delivery, granular per-field permissions beyond the matter-member roles, DB-trigger-enforced audit logging, and workload/team assignment views remain future work. AI-assisted analysis is implemented as an optional, human-reviewed draft workflow and requires `OPENAI_API_KEY` to be enabled.

@@ -14,7 +14,7 @@ type MatterPilotTable<Row, Insert, Update> = {
 }
 
 type AppointmentTypeRow = { id: string; matter_id: string; name: string; duration_minutes: number; category: string; required_checklist: Json; required_documents: Json; created_by: string; created_at: string }
-type AppointmentRow = { id: string; matter_id: string; appointment_type_id: string | null; workflow_key: string; title: string; starts_at: string; ends_at: string; status: string; conflict_status: string; location: string | null; notes: string | null; client_name: string | null; client_email: string | null; created_by: string; created_at: string; updated_at: string }
+type AppointmentRow = { id: string; matter_id: string; appointment_type_id: string | null; workflow_key: string; title: string; starts_at: string; ends_at: string; status: string; conflict_status: string; location: string | null; notes: string | null; client_name: string | null; client_email: string | null; series_id: string | null; occurrence_index: number | null; created_by: string; created_at: string; updated_at: string }
 type AppointmentParticipantRow = { id: string; matter_id: string; appointment_id: string; display_name: string; email: string | null; participant_role: string; response_status: string; is_required: boolean; created_at: string }
 type AppointmentTaskRow = { id: string; matter_id: string; appointment_id: string; label: string; status: string; is_blocking: boolean; due_at: string | null; assigned_to: string | null; created_by: string; created_at: string; updated_at: string }
 type AppointmentDocumentRow = { id: string; matter_id: string; appointment_id: string; name: string; status: string; is_required: boolean; requested_at: string; received_at: string | null; created_by: string; created_at: string }
@@ -34,6 +34,12 @@ type BookingPageRow = { id: string; matter_id: string; slug: string; firm_name: 
 type BookingRequestRow = { id: string; matter_id: string; booking_page_id: string; appointment_type_name: string; requested_start: string; full_name: string; email: string; summary: string | null; status: string; created_at: string; reviewed_at: string | null }
 type CalendarNoteRow = { id: string; matter_id: string | null; title: string; note: string; starts_at: string; ends_at: string; created_by: string; created_at: string; updated_at: string }
 type IntakeReviewRow = { id: string; matter_id: string; booking_request_id: string; reviewer_id: string; decision: string; conflict_status: string; reviewer_note: string | null; created_at: string; updated_at: string }
+type CalendarAvailabilityRuleRow = { id: string; matter_id: string; weekday: number; start_time: string; end_time: string; timezone: string; label: string | null; is_active: boolean; created_by: string; created_at: string; updated_at: string }
+type CalendarBlackoutRow = { id: string; matter_id: string; starts_at: string; ends_at: string; reason: string; status: string; created_by: string; created_at: string; updated_at: string }
+type AppointmentRescheduleHistoryRow = { id: string; matter_id: string; appointment_id: string; previous_starts_at: string; previous_ends_at: string; next_starts_at: string; next_ends_at: string; reason: string | null; changed_by: string; created_at: string }
+type ClientPortalMessageRow = { id: string; matter_id: string; sender_role: string; sender_email: string; body: string; created_by: string | null; created_at: string }
+type ClientPortalActivityRow = { id: string; matter_id: string; activity_type: string; actor_role: string; summary: string; created_at: string }
+type ClientPortalDocumentRequestRow = { id: string; matter_id: string; appointment_id: string | null; title: string; description: string; status: string; storage_path: string | null; file_name: string | null; mime_type: string | null; size_bytes: number | null; uploaded_by_email: string | null; uploaded_at: string | null; reviewed_by: string | null; reviewed_at: string | null; reviewer_note: string | null; requested_by: string; created_at: string; updated_at: string }
 
 type MatterPilotInsert<T> = Partial<T>
 type MatterPilotUpdate<T> = Partial<T>
@@ -46,6 +52,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      appointment_series: {
+        Row: {
+          id: string
+          matter_id: string
+          frequency: string
+          interval_count: number
+          occurrence_count: number
+          created_by: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          matter_id: string
+          frequency: string
+          interval_count?: number
+          occurrence_count: number
+          created_by: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          matter_id?: string
+          frequency?: string
+          interval_count?: number
+          occurrence_count?: number
+          created_by?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
+      client_portal_messages: MatterPilotTable<ClientPortalMessageRow, MatterPilotInsert<ClientPortalMessageRow>, MatterPilotUpdate<ClientPortalMessageRow>>
+      client_portal_activity: MatterPilotTable<ClientPortalActivityRow, MatterPilotInsert<ClientPortalActivityRow>, MatterPilotUpdate<ClientPortalActivityRow>>
+      client_portal_document_requests: MatterPilotTable<ClientPortalDocumentRequestRow, MatterPilotInsert<ClientPortalDocumentRequestRow>, MatterPilotUpdate<ClientPortalDocumentRequestRow>>
       appointment_types: MatterPilotTable<AppointmentTypeRow, MatterPilotInsert<AppointmentTypeRow>, MatterPilotUpdate<AppointmentTypeRow>>
       appointments: MatterPilotTable<AppointmentRow, MatterPilotInsert<AppointmentRow>, MatterPilotUpdate<AppointmentRow>>
       appointment_participants: MatterPilotTable<AppointmentParticipantRow, MatterPilotInsert<AppointmentParticipantRow>, MatterPilotUpdate<AppointmentParticipantRow>>
@@ -67,6 +106,9 @@ export type Database = {
       booking_requests: MatterPilotTable<BookingRequestRow, MatterPilotInsert<BookingRequestRow>, MatterPilotUpdate<BookingRequestRow>>
       calendar_notes: MatterPilotTable<CalendarNoteRow, MatterPilotInsert<CalendarNoteRow>, MatterPilotUpdate<CalendarNoteRow>>
       intake_reviews: MatterPilotTable<IntakeReviewRow, MatterPilotInsert<IntakeReviewRow>, MatterPilotUpdate<IntakeReviewRow>>
+      calendar_availability_rules: MatterPilotTable<CalendarAvailabilityRuleRow, MatterPilotInsert<CalendarAvailabilityRuleRow>, MatterPilotUpdate<CalendarAvailabilityRuleRow>>
+      calendar_blackouts: MatterPilotTable<CalendarBlackoutRow, MatterPilotInsert<CalendarBlackoutRow>, MatterPilotUpdate<CalendarBlackoutRow>>
+      appointment_reschedule_history: MatterPilotTable<AppointmentRescheduleHistoryRow, MatterPilotInsert<AppointmentRescheduleHistoryRow>, MatterPilotUpdate<AppointmentRescheduleHistoryRow>>
       analyses: {
         Row: {
           ai_model: string | null
@@ -1770,6 +1812,22 @@ export type Database = {
         Args: Record<string, never>
         Returns: Json
       }
+      get_client_portal_messages: {
+        Args: { p_matter_id: string }
+        Returns: Json
+      }
+      send_client_portal_message: {
+        Args: { p_matter_id: string; p_body: string }
+        Returns: string
+      }
+      get_client_portal_documents: {
+        Args: { p_matter_id: string }
+        Returns: Json
+      }
+      complete_client_portal_document_upload: {
+        Args: { p_request_id: string; p_storage_path: string; p_file_name: string; p_mime_type: string; p_size_bytes: number }
+        Returns: string
+      }
       submit_appointment_packet: {
         Args: {
           p_token: string
@@ -1796,6 +1854,14 @@ export type Database = {
           p_summary?: string | null
         }
         Returns: string
+      }
+      get_public_booking_slots: {
+        Args: { p_appointment_type_name: string; p_days?: number; p_from_date: string; p_slug: string }
+        Returns: { slot_start: string }[]
+      }
+      calendar_slot_check: {
+        Args: { p_ends_at: string; p_ignore_appointment_id?: string | null; p_matter_id: string; p_starts_at: string }
+        Returns: Json
       }
       create_matter: {
         Args: {

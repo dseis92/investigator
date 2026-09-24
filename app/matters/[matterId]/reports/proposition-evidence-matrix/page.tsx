@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 
 import { recordReportGenerated } from "./actions"
 import { MatterHeader } from "@/components/matters/matter-header"
+import { DownloadPdfButton } from "@/components/reports/download-pdf-button"
 import { PrintButton } from "@/components/reports/print-button"
 import { PropositionEvidenceMatrixTable, type MatrixRow } from "@/components/reports/proposition-evidence-matrix-table"
 import { formatDate } from "@/lib/format"
@@ -73,7 +74,10 @@ export default async function PropositionEvidenceMatrixPage({
         <p className="text-sm text-muted-foreground">
           Every proposition with its supporting and contradicting evidence, cited by evidence ID and source locator.
         </p>
-        <PrintButton onBeforePrint={recordReportGenerated.bind(null, matterId)} />
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <DownloadPdfButton matterId={matterId} reportType="proposition-evidence-matrix" />
+          <PrintButton onBeforePrint={recordReportGenerated.bind(null, matterId)} />
+        </div>
       </div>
 
       <div className="hidden print:block">

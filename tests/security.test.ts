@@ -74,8 +74,11 @@ type EntitySet = {
   appointmentId: string
   appointmentDocumentId: string
   appointmentDocumentDraftId: string
+  appointmentDocumentVersionId: string
+  appointmentDocumentSignatureId: string
   deadlineId: string
   contactId: string
+  evidenceArtifactId: string
 }
 
 let matterA: EntitySet
@@ -353,6 +356,28 @@ async function seedFullEntitySet(client: Client, userId: string, label: string):
     .single()
   if (appointmentDocumentDraftError || !appointmentDocumentDraft) throw appointmentDocumentDraftError
 
+  const { data: appointmentDocumentVersion, error: appointmentDocumentVersionError } = await client
+    .from("appointment_document_versions")
+    .select("id")
+    .eq("appointment_document_id", appointmentDocument.id)
+    .order("version_number", { ascending: false })
+    .limit(1)
+    .single()
+  if (appointmentDocumentVersionError || !appointmentDocumentVersion) throw appointmentDocumentVersionError
+
+  const { data: appointmentDocumentSignature, error: appointmentDocumentSignatureError } = await client
+    .from("appointment_document_signatures")
+    .insert({
+      matter_id: matterId,
+      appointment_document_id: appointmentDocument.id,
+      signer_role: "attorney",
+      status: "requested",
+      created_by: userId,
+    })
+    .select("id")
+    .single()
+  if (appointmentDocumentSignatureError || !appointmentDocumentSignature) throw appointmentDocumentSignatureError
+
   const { data: deadline, error: deadlineError } = await client
     .from("matter_deadlines")
     .insert({
@@ -381,6 +406,22 @@ async function seedFullEntitySet(client: Client, userId: string, label: string):
     .single()
   if (contactError || !contact) throw contactError
 
+  const { data: evidenceArtifact, error: evidenceArtifactError } = await client
+    .from("evidence_artifacts")
+    .insert({
+      matter_id: matterId,
+      evidence_id: evidence.id,
+      storage_path: `${matterId}/${evidence.id}/security-test-${label}-${RUN_ID}.pdf`,
+      file_name: `security-test-${label}.pdf`,
+      mime_type: "application/pdf",
+      size_bytes: 12,
+      sha256_hash: "a".repeat(64),
+      created_by: userId,
+    })
+    .select("id")
+    .single()
+  if (evidenceArtifactError || !evidenceArtifact) throw evidenceArtifactError
+
   return {
     matterId,
     matterNumber,
@@ -406,8 +447,11 @@ async function seedFullEntitySet(client: Client, userId: string, label: string):
     appointmentId: appointment.id,
     appointmentDocumentId: appointmentDocument.id,
     appointmentDocumentDraftId: appointmentDocumentDraft.id,
+    appointmentDocumentVersionId: appointmentDocumentVersion.id,
+    appointmentDocumentSignatureId: appointmentDocumentSignature.id,
     deadlineId: deadline.id,
     contactId: contact.id,
+    evidenceArtifactId: evidenceArtifact.id,
   }
 }
 
@@ -487,10 +531,13 @@ describe("direct reads across every matter-owned table", () => {
     { table: "review_decisions" },
     { table: "audit_events" },
     { table: "appointment_document_drafts" },
+    { table: "appointment_document_versions" },
+    { table: "appointment_document_signatures" },
     { table: "appointment_packet_reminders" },
     { table: "appointment_communications" },
     { table: "matter_deadlines" },
     { table: "matter_contacts" },
+    { table: "evidence_artifacts" },
   ]
 
   for (const { table } of tables) {
@@ -665,15 +712,156 @@ describe("direct writes into Matter B, supplying Matter B's own matter_id", () =
     })
     assert.ok(error)
   })
+
+  test("cannot insert an evidence artifact into Matter B", async () => {
+    const { error } = await clientA.from("evidence_artifacts").insert({
+      matter_id: matterB.matterId,
+      evidence_id: matterB.evidenceId,
+      storage_path: `${matterB.matterId}/${matterB.evidenceId}/forged.pdf`,
+      file_name: "forged.pdf",
+      mime_type: "application/pdf",
+      size_bytes: 12,
+      created_by: userAId,
+    })
+    assert.ok(error)
+  })
+
+  test("cannot insert an appointment document version directly", async () => {
+    const { error } = await clientA.from("appointment_document_versions").insert({
+      matter_id: matterB.matterId,
+      appointment_document_id: matterB.appointmentDocumentId,
+      version_number: 99,
+      content: "forged version",
+      status: "draft",
+      visibility: "internal",
+      created_by: userAId,
+    })
+    assert.ok(error)
+  })
+
+  test("cannot insert an appointment document signature directly", async () => {
+    const { error } = await clientA.from("appointment_document_signatures").insert({
+      matter_id: matterB.matterId,
+      appointment_document_id: matterB.appointmentDocumentId,
+      signer_role: "client",
+      status: "requested",
+      created_by: userAId,
+    })
+    assert.ok(error)
+  })
+})
+
+describe("evidence artifact lifecycle", () => {
+  test("preserves replacements, protects identity, and blocks release under retention controls", async () => {
+    const retentionUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+    const { data: held, error: holdError } = await clientA
+      .from("evidence_artifacts")
+      .update({ retention_until: retentionUntil, legal_hold: true })
+      .eq("id", matterA.evidenceArtifactId)
+      .eq("matter_id", matterA.matterId)
+      .select("retention_until, legal_hold")
+      .single()
+    assert.equal(holdError, null)
+    assert.equal(held?.legal_hold, true)
+    assert.equal(new Date(held?.retention_until ?? "").toISOString(), retentionUntil)
+
+    const { error: releaseHeldError } = await clientA
+      .from("evidence_artifacts")
+      .update({ lifecycle_status: "released" })
+      .eq("id", matterA.evidenceArtifactId)
+      .eq("matter_id", matterA.matterId)
+    assert.ok(releaseHeldError, "a legal hold must block release")
+
+    const { error: rewriteError } = await clientA
+      .from("evidence_artifacts")
+      .update({ file_name: "tampered.pdf" })
+      .eq("id", matterA.evidenceArtifactId)
+      .eq("matter_id", matterA.matterId)
+    assert.ok(rewriteError, "artifact identity fields must remain immutable")
+
+    const { error: forgedReleasedError } = await clientA.from("evidence_artifacts").insert({
+      matter_id: matterA.matterId,
+      evidence_id: matterA.evidenceId,
+      storage_path: `${matterA.matterId}/${matterA.evidenceId}/forged-released-${RUN_ID}.pdf`,
+      file_name: "forged-released.pdf",
+      mime_type: "application/pdf",
+      size_bytes: 18,
+      lifecycle_status: "released",
+      created_by: userAId,
+    })
+    assert.ok(forgedReleasedError, "new artifacts must not bypass the release workflow")
+
+    const { data: replacement, error: replacementError } = await clientA
+      .from("evidence_artifacts")
+      .insert({
+        matter_id: matterA.matterId,
+        evidence_id: matterA.evidenceId,
+        storage_path: `${matterA.matterId}/${matterA.evidenceId}/replacement-${RUN_ID}.pdf`,
+        file_name: "replacement.pdf",
+        mime_type: "application/pdf",
+        size_bytes: 18,
+        sha256_hash: "b".repeat(64),
+        replaces_artifact_id: matterA.evidenceArtifactId,
+        created_by: userAId,
+      })
+      .select("id, lifecycle_status, replaces_artifact_id")
+      .single()
+    assert.equal(replacementError, null)
+    assert.ok(replacement)
+    assert.equal(replacement?.lifecycle_status, "active")
+    assert.equal(replacement?.replaces_artifact_id, matterA.evidenceArtifactId)
+
+    const { data: superseded, error: supersedeError } = await clientA
+      .from("evidence_artifacts")
+      .update({ lifecycle_status: "superseded" })
+      .eq("id", matterA.evidenceArtifactId)
+      .eq("matter_id", matterA.matterId)
+      .select("lifecycle_status")
+      .single()
+    assert.equal(supersedeError, null)
+    assert.equal(superseded?.lifecycle_status, "superseded")
+
+    const { data: released, error: releaseError } = await clientA
+      .from("evidence_artifacts")
+      .update({ lifecycle_status: "released", retention_until: null, legal_hold: false })
+      .eq("id", replacement?.id ?? "")
+      .eq("matter_id", matterA.matterId)
+      .select("lifecycle_status, released_at")
+      .single()
+    assert.equal(releaseError, null)
+    assert.equal(released?.lifecycle_status, "released")
+    assert.ok(released?.released_at)
+  })
 })
 
 describe("client preparation packet", () => {
   test("public packet is viewable once, submits intake, and closes", async () => {
     const { error: intakeDraftError } = await clientA
       .from("appointment_document_drafts")
-      .update({ status: "final" })
+      .update({
+        status: "final",
+        visibility: "internal",
+        field_schema: [{ key: "full_name", label: "Full name", type: "text", required: true, clientEditable: true }],
+      })
       .eq("appointment_document_id", matterA.appointmentDocumentId)
     assert.equal(intakeDraftError, null)
+
+    const hiddenPacketToken = `packet-hidden-${RUN_ID}-${"x".repeat(48)}`
+    const { data: hiddenPacket, error: hiddenPacketError } = await clientA.from("appointment_packets").insert({
+      matter_id: matterA.matterId,
+      appointment_id: matterA.appointmentId,
+      token: hiddenPacketToken,
+      expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      created_by: userAId,
+    }).select("id").single()
+    assert.equal(hiddenPacketError, null)
+    assert.ok(hiddenPacket)
+    const { data: hiddenView, error: hiddenViewError } = await anonClient.rpc("get_appointment_packet", { p_token: hiddenPacketToken })
+    assert.equal(hiddenViewError, null)
+    assert.equal((hiddenView as { documents: unknown[] }).documents.length, 0, "internal final drafts must stay out of client packets")
+
+    const { error: clientVisibleError } = await clientA.from("appointment_document_drafts").update({ visibility: "client" }).eq("appointment_document_id", matterA.appointmentDocumentId)
+    assert.equal(clientVisibleError, null)
 
     const { data: engagementDocument, error: engagementDocumentError } = await clientA
       .from("appointment_documents")
@@ -693,20 +881,25 @@ describe("client preparation packet", () => {
       template_key: "engagement_letter",
       content: "Approved engagement letter for security test",
       status: "final",
+      visibility: "client",
+      field_schema: [{ key: "scope", label: "Scope", type: "textarea", required: true, clientEditable: true }],
       created_by: userAId,
       updated_by: userAId,
     })
     assert.equal(engagementDraftError, null)
 
-    const packetToken = `packet-${RUN_ID}-${"x".repeat(55)}`
-    const { data: packet, error: packetError } = await clientA.from("appointment_packets").insert({
+    const { data: signature, error: signatureError } = await clientA.from("appointment_document_signatures").insert({
       matter_id: matterA.matterId,
-      appointment_id: matterA.appointmentId,
-      token: packetToken,
-      expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      appointment_document_id: engagementDocument.id,
+      signer_role: "client",
+      status: "requested",
       created_by: userAId,
     }).select("id").single()
-    assert.equal(packetError, null)
+    assert.equal(signatureError, null)
+    assert.ok(signature)
+
+    const packetToken = hiddenPacketToken
+    const packet = hiddenPacket
     assert.ok(packet)
 
     const { error: reminderError } = await clientA.from("appointment_packet_reminders").insert({
@@ -721,6 +914,9 @@ describe("client preparation packet", () => {
     assert.equal(viewError, null)
     assert.ok(packetView)
     assert.equal((packetView as { documents: unknown[] }).documents.length, 2)
+    const packetDocuments = (packetView as { documents: { fields?: unknown[]; signature?: { status: string } }[] }).documents
+    assert.equal(packetDocuments[0].fields?.length, 1)
+    assert.equal(packetDocuments[1].signature?.status, "requested")
 
     const { data: submission, error: submissionError } = await anonClient.rpc("submit_appointment_packet", {
       p_token: packetToken,
@@ -731,9 +927,18 @@ describe("client preparation packet", () => {
       p_goals: "Resolve the matter",
       p_deadlines: "No known deadline",
       p_engagement_acknowledged: true,
+      p_field_values: { full_name: "Packet Client", scope: "Limited representation for the described matter." },
+      p_signature_name: "Packet Client",
+      p_signature_consent: true,
     })
     assert.equal(submissionError, null)
     assert.equal((submission as { ok: boolean }).ok, true)
+
+    const { data: signedSignature } = await clientA.from("appointment_document_signatures").select("status, signer_name, signed_at, signed_version_id").eq("id", signature.id).single()
+    assert.equal(signedSignature?.status, "signed")
+    assert.equal(signedSignature?.signer_name, "Packet Client")
+    assert.ok(signedSignature?.signed_at)
+    assert.ok(signedSignature?.signed_version_id)
 
     const { data: closedView, error: closedViewError } = await anonClient.rpc("get_appointment_packet", { p_token: packetToken })
     assert.equal(closedViewError, null)
@@ -758,6 +963,52 @@ describe("client preparation packet", () => {
     }).select("status").single()
     assert.equal(communicationError, null)
     assert.equal(communication?.status, "queued")
+  })
+})
+
+describe("verified client portal", () => {
+  test("returns only granted matter content to an authenticated matching email", async () => {
+    const { error: appointmentUpdateError } = await clientA
+      .from("appointments")
+      .update({ client_name: "Verified Portal Client", client_email: EMAIL_B })
+      .eq("id", matterA.appointmentId)
+      .eq("matter_id", matterA.matterId)
+    assert.equal(appointmentUpdateError, null)
+
+    const { error: grantError } = await clientA.from("client_portal_grants").insert({
+      matter_id: matterA.matterId,
+      client_email: EMAIL_B,
+      client_name: "Verified Portal Client",
+      created_by: userAId,
+    })
+    assert.equal(grantError, null)
+
+    const { data: portalHome, error: portalError } = await clientB.rpc("get_client_portal_home")
+    assert.equal(portalError, null)
+    const home = portalHome as { matters: { id: string; appointments: { documents: { name: string }[] }[] }[] }
+    assert.equal(home.matters.length, 1)
+    assert.equal(home.matters[0]?.id, matterA.matterId)
+    assert.equal(home.matters[0]?.appointments.length, 1)
+    assert.deepEqual(home.matters[0]?.appointments[0]?.documents.map((document) => document.name), ["Engagement letter", "Intake questionnaire"])
+
+    const { data: anonymousHome, error: anonymousError } = await anonClient.rpc("get_client_portal_home")
+    assert.ok(anonymousError, "anonymous users must not call the portal home function")
+    assert.equal(anonymousHome, null)
+
+    const { data: directGrantRows, error: directGrantError } = await clientB.from("client_portal_grants").select("id").eq("matter_id", matterA.matterId)
+    assert.equal(directGrantError, null)
+    assert.deepEqual(directGrantRows, [], "clients must not read grant rows directly")
+
+    const { error: revokeError } = await clientA
+      .from("client_portal_grants")
+      .update({ status: "revoked" })
+      .eq("matter_id", matterA.matterId)
+      .eq("client_email", EMAIL_B)
+    assert.equal(revokeError, null)
+
+    const { data: revokedHome, error: revokedError } = await clientB.rpc("get_client_portal_home")
+    assert.equal(revokedError, null)
+    assert.deepEqual((revokedHome as { matters: unknown[] }).matters, [])
   })
 })
 

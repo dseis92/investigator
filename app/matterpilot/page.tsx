@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 
-import { MatterPilotDashboard, type Appointment, type DashboardCommunication, type DashboardContact, type DashboardDeadline } from "@/components/matterpilot/dashboard"
+import { MatterPilotDashboard, type Appointment, type DashboardCommunication, type DashboardContact, type DashboardDeadline, type DashboardPortalDocumentRequest } from "@/components/matterpilot/dashboard"
 import { getDocumentTemplate } from "@/lib/matterpilot/documents"
 import { getWorkflow } from "@/lib/matterpilot/workflows"
 import { createClient } from "@/lib/supabase/server"
@@ -42,6 +42,18 @@ export default async function MatterPilotPage() {
     : { data: [] }
   const { data: contacts } = matterIds.length
     ? await supabase.from("matter_contacts").select("id, matter_id, display_name, contact_type, email, phone, notes, status").in("matter_id", matterIds).order("display_name", { ascending: true }).limit(200)
+    : { data: [] }
+  const { data: availabilityRules } = matterIds.length
+    ? await supabase.from("calendar_availability_rules").select("id, matter_id, weekday, start_time, end_time, timezone, label, is_active").in("matter_id", matterIds).eq("is_active", true).order("weekday", { ascending: true }).order("start_time", { ascending: true })
+    : { data: [] }
+  const { data: calendarBlackouts } = matterIds.length
+    ? await supabase.from("calendar_blackouts").select("id, matter_id, starts_at, ends_at, reason, status").in("matter_id", matterIds).eq("status", "active").order("starts_at", { ascending: true }).limit(50)
+    : { data: [] }
+  const { data: portalMessages } = matterIds.length
+    ? await supabase.from("client_portal_messages").select("id, matter_id, sender_role, sender_email, body, created_at").in("matter_id", matterIds).order("created_at", { ascending: true }).limit(200)
+    : { data: [] }
+  const { data: portalDocumentRequests } = matterIds.length
+    ? await supabase.from("client_portal_document_requests").select("id, matter_id, appointment_id, title, description, status, file_name, mime_type, size_bytes, uploaded_at, reviewer_note, created_at").in("matter_id", matterIds).order("created_at", { ascending: false }).limit(200)
     : { data: [] }
 
   const appointmentIds = (appointments ?? []).map((appointment) => appointment.id)
@@ -243,5 +255,5 @@ export default async function MatterPilotPage() {
     }
   })
 
-  return <MatterPilotDashboard matters={matterRows} initialAppointments={[...initialAppointments, ...noteAppointments]} initialCommunications={initialCommunications} initialDeadlines={initialDeadlines} initialContacts={initialContacts} userName="Maya" />
+  return <MatterPilotDashboard matters={matterRows} initialAppointments={[...initialAppointments, ...noteAppointments]} initialCommunications={initialCommunications} initialDeadlines={initialDeadlines} initialContacts={initialContacts} initialAvailabilityRules={(availabilityRules ?? []).map((rule) => ({ id: rule.id, matterId: rule.matter_id, weekday: rule.weekday, startTime: rule.start_time.slice(0, 5), endTime: rule.end_time.slice(0, 5), timezone: rule.timezone, label: rule.label }))} initialBlackouts={(calendarBlackouts ?? []).map((blackout) => ({ id: blackout.id, matterId: blackout.matter_id, startsAt: blackout.starts_at, endsAt: blackout.ends_at, reason: blackout.reason }))} initialPortalMessages={(portalMessages ?? []).map((message) => ({ id: message.id, matterId: message.matter_id, matter: matterNames.get(message.matter_id) ?? "Matter", senderRole: message.sender_role as "client" | "firm", senderEmail: message.sender_email, body: message.body, createdAt: message.created_at }))} initialPortalDocumentRequests={(portalDocumentRequests ?? []).map((request): DashboardPortalDocumentRequest => ({ id: request.id, matterId: request.matter_id, matter: matterNames.get(request.matter_id) ?? "Matter", appointmentId: request.appointment_id, title: request.title, description: request.description, status: request.status as DashboardPortalDocumentRequest["status"], fileName: request.file_name, mimeType: request.mime_type, sizeBytes: request.size_bytes, uploadedAt: request.uploaded_at, reviewerNote: request.reviewer_note, createdAt: request.created_at }))} userName="Maya" />
 }

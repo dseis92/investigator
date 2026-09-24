@@ -20,6 +20,13 @@ const appointmentSchema = z.object({
   clientName: z.string().trim().max(160).optional(),
   clientEmail: z.string().trim().email().optional().or(z.literal("")),
   newClientCaseMode: z.enum(["criminal_defense", "civil_defense"]).optional(),
+  recurrence: z.object({
+    frequency: z.enum(["weekly", "monthly"]),
+    interval: z.number().int().min(1).max(4),
+    count: z.number().int().min(2).max(52),
+  }).optional(),
+  seriesId: z.string().uuid().optional(),
+  occurrenceIndex: z.number().int().min(0).optional(),
 })
 
 export type MatterPilotActionResult =
@@ -29,6 +36,34 @@ export type MatterPilotActionResult =
 export async function createAppointmentAction(input: z.input<typeof appointmentSchema>): Promise<MatterPilotActionResult> {
   const parsed = appointmentSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: "Enter a title, matter, and valid appointment time." }
+
+  if (parsed.data.recurrence && parsed.data.seriesId === undefined) {
+    if (!parsed.data.matterId) return { ok: false, error: "Recurring appointments need an existing matter." }
+    const supabase = await createClient()
+    const { data: userData } = await supabase.auth.getUser()
+    if (!userData.user) return { ok: false, error: "Please sign in before creating appointments." }
+    const { data: series, error: seriesError } = await supabase.from("appointment_series").insert({
+      matter_id: parsed.data.matterId,
+      frequency: parsed.data.recurrence.frequency,
+      interval_count: parsed.data.recurrence.interval,
+      occurrence_count: parsed.data.recurrence.count,
+      created_by: userData.user.id,
+    }).select("id").single()
+    if (seriesError || !series) return { ok: false, error: seriesError?.message ?? "Unable to create the recurring series." }
+
+    const duration = new Date(parsed.data.endsAt).getTime() - new Date(parsed.data.startsAt).getTime()
+    let firstAppointmentId = ""
+    for (let index = 0; index < parsed.data.recurrence.count; index += 1) {
+      const startsAt = new Date(parsed.data.startsAt)
+      if (parsed.data.recurrence.frequency === "weekly") startsAt.setDate(startsAt.getDate() + index * parsed.data.recurrence.interval * 7)
+      else startsAt.setMonth(startsAt.getMonth() + index * parsed.data.recurrence.interval)
+      const endsAt = new Date(startsAt.getTime() + duration)
+      const result = await createAppointmentAction({ ...parsed.data, startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString(), recurrence: undefined, seriesId: series.id, occurrenceIndex: index })
+      if (!result.ok) return result
+      if (!firstAppointmentId) firstAppointmentId = result.appointmentId
+    }
+    return { ok: true, appointmentId: firstAppointmentId }
+  }
 
   const supabase = await createClient()
   const { data: userData } = await supabase.auth.getUser()
@@ -50,6 +85,16 @@ export async function createAppointmentAction(input: z.input<typeof appointmentS
     matterId = intakeMatter.id
   }
 
+  const { data: slotCheck, error: slotCheckError } = await supabase.rpc("calendar_slot_check", {
+    p_matter_id: matterId,
+    p_starts_at: parsed.data.startsAt,
+    p_ends_at: parsed.data.endsAt,
+    p_ignore_appointment_id: null,
+  })
+  if (slotCheckError) return { ok: false, error: "Unable to verify that calendar time. Please try again." }
+  const checkedSlot = slotCheck && typeof slotCheck === "object" && !Array.isArray(slotCheck) ? slotCheck as { available?: boolean; reason?: string } : null
+  if (!checkedSlot?.available) return { ok: false, error: checkedSlot?.reason ?? "That time is not available." }
+
   const { data: appointment, error } = await supabase
     .from("appointments")
     .insert({
@@ -62,6 +107,8 @@ export async function createAppointmentAction(input: z.input<typeof appointmentS
       notes: parsed.data.notes || null,
       client_name: parsed.data.clientName || null,
       client_email: parsed.data.clientEmail || null,
+      series_id: parsed.data.seriesId || null,
+      occurrence_index: parsed.data.occurrenceIndex ?? null,
       created_by: userData.user.id,
       status: "tentative",
       conflict_status: "pending",
@@ -150,6 +197,318 @@ export async function createCalendarNoteAction(input: z.input<typeof calendarNot
   if (error || !note) return { ok: false, error: error?.message ?? "Unable to save the calendar note." }
   revalidatePath("/matterpilot")
   return { ok: true, appointmentId: note.id }
+}
+
+const availabilityRuleSchema = z.object({
+  weekday: z.number().int().min(1).max(7),
+  startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  timezone: z.string().trim().min(3).max(80),
+  label: z.string().trim().max(120).optional(),
+})
+
+const availabilityRulesSchema = z.object({
+  matterId: z.string().uuid(),
+  rules: z.array(availabilityRuleSchema).max(28),
+})
+
+export type AvailabilityActionResult =
+  | { ok: true; count: number }
+  | { ok: false; error: string }
+
+export async function saveCalendarAvailabilityAction(input: z.input<typeof availabilityRulesSchema>): Promise<AvailabilityActionResult> {
+  const parsed = availabilityRulesSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: "Add valid weekday availability before saving." }
+
+  const supabase = await createClient()
+  const { data: userData } = await supabase.auth.getUser()
+  if (!userData.user) return { ok: false, error: "Please sign in before updating availability." }
+
+  const { error: deleteError } = await supabase.from("calendar_availability_rules").delete().eq("matter_id", parsed.data.matterId)
+  if (deleteError) return { ok: false, error: deleteError.message }
+
+  if (parsed.data.rules.length) {
+    const { error: insertError } = await supabase.from("calendar_availability_rules").insert(parsed.data.rules.map((rule) => ({
+      matter_id: parsed.data.matterId,
+      weekday: rule.weekday,
+      start_time: rule.startTime,
+      end_time: rule.endTime,
+      timezone: rule.timezone,
+      label: rule.label || null,
+      created_by: userData.user.id,
+      updated_at: new Date().toISOString(),
+    })))
+    if (insertError) return { ok: false, error: insertError.message }
+  }
+
+  revalidatePath("/matterpilot")
+  return { ok: true, count: parsed.data.rules.length }
+}
+
+const blackoutSchema = z.object({
+  matterId: z.string().uuid(),
+  startsAt: z.string().datetime(),
+  endsAt: z.string().datetime(),
+  reason: z.string().trim().min(2).max(240),
+})
+
+export async function createCalendarBlackoutAction(input: z.input<typeof blackoutSchema>): Promise<MatterPilotActionResult> {
+  const parsed = blackoutSchema.safeParse(input)
+  if (!parsed.success || new Date(parsed.data.endsAt).getTime() <= new Date(parsed.data.startsAt).getTime()) return { ok: false, error: "Choose a valid blocked time range." }
+
+  const supabase = await createClient()
+  const { data: userData } = await supabase.auth.getUser()
+  if (!userData.user) return { ok: false, error: "Please sign in before blocking calendar time." }
+
+  const { data, error } = await supabase.from("calendar_blackouts").insert({
+    matter_id: parsed.data.matterId,
+    starts_at: parsed.data.startsAt,
+    ends_at: parsed.data.endsAt,
+    reason: parsed.data.reason,
+    created_by: userData.user.id,
+    updated_at: new Date().toISOString(),
+  }).select("id").single()
+  if (error || !data) return { ok: false, error: error?.message ?? "Unable to block that time." }
+
+  revalidatePath("/matterpilot")
+  return { ok: true, appointmentId: data.id }
+}
+
+const cancelBlackoutSchema = z.object({ matterId: z.string().uuid(), blackoutId: z.string().uuid() })
+
+export async function cancelCalendarBlackoutAction(input: z.input<typeof cancelBlackoutSchema>): Promise<MatterPilotActionResult> {
+  const parsed = cancelBlackoutSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: "That blocked time could not be updated." }
+
+  const supabase = await createClient()
+  const { data: userData } = await supabase.auth.getUser()
+  if (!userData.user) return { ok: false, error: "Please sign in before updating blocked time." }
+
+  const { data, error } = await supabase.from("calendar_blackouts").update({ status: "cancelled", updated_at: new Date().toISOString() }).eq("id", parsed.data.blackoutId).eq("matter_id", parsed.data.matterId).select("id").single()
+  if (error || !data) return { ok: false, error: error?.message ?? "That blocked time is no longer available." }
+
+  revalidatePath("/matterpilot")
+  return { ok: true, appointmentId: data.id }
+}
+
+const rescheduleSchema = z.object({
+  matterId: z.string().uuid(),
+  appointmentId: z.string().uuid(),
+  startsAt: z.string().datetime(),
+  endsAt: z.string().datetime(),
+  reason: z.string().trim().max(500).optional(),
+})
+
+export async function rescheduleAppointmentAction(input: z.input<typeof rescheduleSchema>): Promise<MatterPilotActionResult> {
+  const parsed = rescheduleSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: "Choose a valid new appointment time." }
+
+  const supabase = await createClient()
+  const { data: userData } = await supabase.auth.getUser()
+  if (!userData.user) return { ok: false, error: "Please sign in before rescheduling." }
+
+  const { data: current, error: currentError } = await supabase.from("appointments").select("starts_at, ends_at").eq("id", parsed.data.appointmentId).eq("matter_id", parsed.data.matterId).single()
+  if (currentError || !current) return { ok: false, error: "That appointment is no longer available." }
+
+  const { data: slotCheck, error: slotCheckError } = await supabase.rpc("calendar_slot_check", {
+    p_matter_id: parsed.data.matterId,
+    p_starts_at: parsed.data.startsAt,
+    p_ends_at: parsed.data.endsAt,
+    p_ignore_appointment_id: parsed.data.appointmentId,
+  })
+  if (slotCheckError) return { ok: false, error: "Unable to verify that new time. Please try again." }
+  const checkedSlot = slotCheck && typeof slotCheck === "object" && !Array.isArray(slotCheck) ? slotCheck as { available?: boolean; reason?: string } : null
+  if (!checkedSlot?.available) return { ok: false, error: checkedSlot?.reason ?? "That time is not available." }
+
+  const { error: updateError } = await supabase.from("appointments").update({ starts_at: parsed.data.startsAt, ends_at: parsed.data.endsAt, conflict_status: "pending", updated_at: new Date().toISOString() }).eq("id", parsed.data.appointmentId).eq("matter_id", parsed.data.matterId)
+  if (updateError) return { ok: false, error: updateError.message }
+
+  const { error: historyError } = await supabase.from("appointment_reschedule_history").insert({
+    matter_id: parsed.data.matterId,
+    appointment_id: parsed.data.appointmentId,
+    previous_starts_at: current.starts_at,
+    previous_ends_at: current.ends_at,
+    next_starts_at: parsed.data.startsAt,
+    next_ends_at: parsed.data.endsAt,
+    reason: parsed.data.reason || null,
+    changed_by: userData.user.id,
+  })
+  if (historyError) return { ok: false, error: historyError.message }
+
+  revalidatePath("/matterpilot")
+  return { ok: true, appointmentId: parsed.data.appointmentId }
+}
+
+const publicSlotsSchema = z.object({
+  slug: z.string().trim().min(1).max(120),
+  appointmentTypeName: z.string().trim().min(2).max(120),
+  fromDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+})
+
+export async function getPublicBookingSlotsAction(input: z.input<typeof publicSlotsSchema>): Promise<{ ok: true; slots: string[] } | { ok: false; error: string }> {
+  const parsed = publicSlotsSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: "That booking week could not be loaded." }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc("get_public_booking_slots", {
+    p_slug: parsed.data.slug,
+    p_appointment_type_name: parsed.data.appointmentTypeName,
+    p_from_date: parsed.data.fromDate,
+    p_days: 5,
+  })
+  if (error) return { ok: false, error: "Availability is temporarily unavailable. Please contact the firm directly." }
+  return { ok: true, slots: (data ?? []).map((slot) => slot.slot_start) }
+}
+
+const clientPortalMessageSchema = z.object({
+  matterId: z.string().uuid(),
+  body: z.string().trim().min(1).max(4000),
+})
+
+export async function sendClientPortalMessageAction(input: z.input<typeof clientPortalMessageSchema>): Promise<MatterPilotActionResult> {
+  const parsed = clientPortalMessageSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: "Write a message before sending." }
+  const supabase = await createClient()
+  const { data: userData } = await supabase.auth.getUser()
+  if (!userData.user) return { ok: false, error: "Please verify your email before messaging the firm." }
+  const { data, error } = await supabase.rpc("send_client_portal_message", { p_matter_id: parsed.data.matterId, p_body: parsed.data.body })
+  if (error || !data) return { ok: false, error: error?.message ?? "Unable to send that message." }
+  revalidatePath("/portal")
+  return { ok: true, appointmentId: data }
+}
+
+export async function sendFirmPortalMessageAction(input: z.input<typeof clientPortalMessageSchema>): Promise<MatterPilotActionResult> {
+  const parsed = clientPortalMessageSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: "Write a message before sending." }
+  const supabase = await createClient()
+  const { data: userData } = await supabase.auth.getUser()
+  if (!userData.user) return { ok: false, error: "Please sign in before replying." }
+  const { data: message, error } = await supabase.from("client_portal_messages").insert({ matter_id: parsed.data.matterId, sender_role: "firm", sender_email: userData.user.email ?? "firm", body: parsed.data.body, created_by: userData.user.id }).select("id").single()
+  if (error || !message) return { ok: false, error: error?.message ?? "Unable to send that reply." }
+  await supabase.from("client_portal_activity").insert({ matter_id: parsed.data.matterId, activity_type: "message_sent", actor_role: "firm", summary: "Firm sent a portal message" })
+  revalidatePath("/matterpilot")
+  return { ok: true, appointmentId: message.id }
+}
+
+const portalDocumentRequestSchema = z.object({
+  matterId: z.string().uuid(),
+  appointmentId: z.string().uuid().optional().or(z.literal("")),
+  title: z.string().trim().min(2).max(180),
+  description: z.string().trim().max(2000).optional(),
+})
+
+export type PortalDocumentActionResult =
+  | { ok: true; requestId: string }
+  | { ok: false; error: string }
+
+export async function createClientPortalDocumentRequestAction(input: z.input<typeof portalDocumentRequestSchema>): Promise<PortalDocumentActionResult> {
+  const parsed = portalDocumentRequestSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: "Add a document name before creating the request." }
+  const supabase = await createClient()
+  const { data: userData } = await supabase.auth.getUser()
+  if (!userData.user) return { ok: false, error: "Please sign in before requesting a client document." }
+  const { data, error } = await supabase.from("client_portal_document_requests").insert({
+    matter_id: parsed.data.matterId,
+    appointment_id: parsed.data.appointmentId || null,
+    title: parsed.data.title,
+    description: parsed.data.description?.trim() ?? "",
+    requested_by: userData.user.id,
+  }).select("id").single()
+  if (error || !data) return { ok: false, error: error?.message ?? "Unable to create the document request." }
+  revalidatePath("/matterpilot")
+  revalidatePath("/portal")
+  return { ok: true, requestId: data.id }
+}
+
+const portalDocumentReviewSchema = z.object({
+  matterId: z.string().uuid(),
+  requestId: z.string().uuid(),
+  status: z.enum(["approved", "rejected"]),
+  reviewerNote: z.string().trim().max(2000).optional(),
+})
+
+export async function reviewClientPortalDocumentAction(input: z.input<typeof portalDocumentReviewSchema>): Promise<PortalDocumentActionResult> {
+  const parsed = portalDocumentReviewSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: "That document review could not be saved." }
+  const supabase = await createClient()
+  const { data: userData } = await supabase.auth.getUser()
+  if (!userData.user) return { ok: false, error: "Please sign in before reviewing a client document." }
+  const { data, error } = await supabase.from("client_portal_document_requests").update({
+    status: parsed.data.status,
+    reviewer_note: parsed.data.reviewerNote?.trim() || null,
+    reviewed_by: userData.user.id,
+    reviewed_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }).eq("id", parsed.data.requestId).eq("matter_id", parsed.data.matterId).eq("status", "uploaded").select("id").single()
+  if (error || !data) return { ok: false, error: error?.message ?? "That document is no longer awaiting review." }
+  await supabase.from("client_portal_activity").insert({ matter_id: parsed.data.matterId, activity_type: "document_viewed", actor_role: "firm", summary: parsed.data.status === "approved" ? "Firm approved a client document" : "Firm requested a replacement client document" })
+  revalidatePath("/matterpilot")
+  revalidatePath("/portal")
+  return { ok: true, requestId: data.id }
+}
+
+const MAX_PORTAL_DOCUMENT_SIZE = 25 * 1024 * 1024
+const ALLOWED_PORTAL_DOCUMENT_TYPES = new Set([
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "text/plain",
+  "text/csv",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+])
+
+function safePortalFileName(fileName: string) {
+  return fileName.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-120) || "document"
+}
+
+export type PortalDocumentUploadState = { error: string | null; uploadedRequestId?: string }
+
+export async function uploadClientPortalDocumentAction(requestId: string, _previousState: PortalDocumentUploadState, formData: FormData): Promise<PortalDocumentUploadState> {
+  const file = formData.get("document")
+  if (!(file instanceof File) || file.size === 0) return { error: "Choose a file before uploading." }
+  if (file.size > MAX_PORTAL_DOCUMENT_SIZE) return { error: "Client documents must be 25 MB or smaller." }
+  if (!ALLOWED_PORTAL_DOCUMENT_TYPES.has(file.type)) return { error: "That file type is not supported yet." }
+  const supabase = await createClient()
+  const { data: userData } = await supabase.auth.getUser()
+  if (!userData.user) return { error: "Verify your email before uploading a document." }
+  const { data: request, error: requestError } = await supabase.from("client_portal_document_requests").select("id, matter_id, status").eq("id", requestId).single()
+  if (requestError || !request) return { error: "That document request is no longer available." }
+  if (request.status !== "requested" && request.status !== "rejected") return { error: "This document request is not accepting another upload." }
+
+  const storagePath = `${request.matter_id}/${request.id}/${randomBytes(10).toString("hex")}-${safePortalFileName(file.name)}`
+  const bytes = Buffer.from(await file.arrayBuffer())
+  const { error: uploadError } = await supabase.storage.from("client-portal-documents").upload(storagePath, bytes, { contentType: file.type, upsert: false })
+  if (uploadError) return { error: uploadError.message }
+
+  const { data: completedId, error: completeError } = await supabase.rpc("complete_client_portal_document_upload", {
+    p_request_id: request.id,
+    p_storage_path: storagePath,
+    p_file_name: file.name,
+    p_mime_type: file.type,
+    p_size_bytes: file.size,
+  })
+  if (completeError || !completedId) {
+    await supabase.storage.from("client-portal-documents").remove([storagePath])
+    return { error: completeError?.message ?? "The uploaded document could not be registered." }
+  }
+  revalidatePath("/portal")
+  revalidatePath("/matterpilot")
+  return { error: null, uploadedRequestId: completedId }
+}
+
+export async function createClientPortalDocumentDownloadUrlAction(requestId: string) {
+  const supabase = await createClient()
+  const { data: userData } = await supabase.auth.getUser()
+  if (!userData.user) return { ok: false as const, error: "Please verify your email before downloading a document." }
+  const { data: request, error } = await supabase.from("client_portal_document_requests").select("storage_path, status").eq("id", requestId).single()
+  if (error || !request?.storage_path || request.status === "requested") return { ok: false as const, error: "This document is not available yet." }
+  const { data: signed, error: signedError } = await supabase.storage.from("client-portal-documents").createSignedUrl(request.storage_path, 10 * 60)
+  if (signedError || !signed) return { ok: false as const, error: signedError?.message ?? "Could not create a secure document link." }
+  return { ok: true as const, url: signed.signedUrl }
 }
 
 const deadlineSchema = z.object({
@@ -1015,7 +1374,10 @@ export async function submitPublicBookingAction(input: z.input<typeof bookingSch
     p_summary: parsed.data.summary || null,
   })
 
-  if (error) return { ok: false, error: "This booking link is unavailable. Please contact the firm directly." }
+  if (error) {
+    if (error.code === "23P01" || error.message.toLowerCase().includes("no longer available")) return { ok: false, error: "That time was just taken. Choose another available slot." }
+    return { ok: false, error: "This booking link is unavailable. Please contact the firm directly." }
+  }
   return { ok: true }
 }
 

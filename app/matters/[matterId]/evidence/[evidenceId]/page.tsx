@@ -4,6 +4,7 @@ import { notFound } from "next/navigation"
 
 import { AnnotationForm } from "@/components/evidence/annotation-form"
 import { AuthenticationNotice } from "@/components/evidence/authentication-notice"
+import { EvidenceArtifacts } from "@/components/evidence/evidence-artifacts"
 import { ExcludeEvidenceDialog } from "@/components/evidence/exclude-evidence-dialog"
 import { ReviewStateControl } from "@/components/evidence/review-state-control"
 import { SupersedeEvidenceDialog } from "@/components/evidence/supersede-evidence-dialog"
@@ -61,7 +62,7 @@ export default async function EvidenceDetailPage({
         .maybeSingle()
     : { data: null }
 
-  const [{ data: annotations }, { data: links }, { data: auditRows }, role, { data: otherEvidence }] = await Promise.all([
+  const [{ data: annotations }, { data: links }, { data: auditRows }, role, { data: otherEvidence }, { data: artifacts }] = await Promise.all([
     supabase
       .from("evidence_annotations")
       .select("id, body, created_at, author:profiles(full_name)")
@@ -87,6 +88,12 @@ export default async function EvidenceDetailPage({
       .eq("is_excluded", false)
       .neq("id", evidenceId)
       .order("evidence_number", { ascending: true }),
+    supabase
+      .from("evidence_artifacts")
+      .select("id, file_name, mime_type, size_bytes, sha256_hash, created_at, lifecycle_status, replaces_artifact_id, retention_until, legal_hold, released_at")
+      .eq("matter_id", matterId)
+      .eq("evidence_id", evidenceId)
+      .order("created_at", { ascending: false }),
   ])
 
   const source = evidence.source as { name: string; source_type: string; locator: string | null } | null
@@ -132,6 +139,8 @@ export default async function EvidenceDetailPage({
       ) : null}
 
       <AuthenticationNotice />
+
+      <EvidenceArtifacts matterId={matterId} evidenceId={evidenceId} artifacts={artifacts ?? []} canManageRetention={canExcludeEvidence(role)} />
 
       <Card>
         <CardHeader>
