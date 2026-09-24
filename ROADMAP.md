@@ -56,18 +56,21 @@ This is the ordered product plan for continuing the current build. Completed wor
 - [x] Add conflict search across people and organizations for intake review.
 - [x] Add intake acceptance that creates a matter and starts engagement workflows.
 - [x] Add task owners, dependencies, due dates, and workload/team assignment views.
-- [ ] Add recurring tasks, notifications, and court-rule calculations.
+- [x] Add recurring task templates, notification queue, and court-rule calculations.
+- [ ] Add scheduled notification delivery and automatic recurring-task execution.
 
 ## Phase 6 — reporting and firm operations
 
-- [ ] Add the remaining report types with PDF export and report history.
-- [ ] Add matter activity and communication timelines.
-- [ ] Add time tracking, billing integrations, and client billing status later in the product cycle.
+- [x] Add the remaining derived report types with print-ready export and matter-scoped report views.
+- [ ] Add PDF export and report history for the derived report types.
+- [x] Add matter activity and communication timelines.
+- [x] Add time tracking and draft billing foundations; payment/billing-provider integrations remain later in the product cycle.
 - [ ] Add firm settings, templates, roles, retention, and export controls.
 
 ## Phase 7 — AI assistance
 
 - [x] Connect AI-assisted analysis drafts through the existing human-review workflow (optional OpenAI provider).
+- [x] Add matter-brief assistance runs with redaction, prompt-version, model, and human-review tracking.
 - [ ] Add evidence-cited summaries, contradiction detection, timeline gaps, and missing-document suggestions.
 - [ ] Add deposition-question and preparation-draft assistance.
 - [ ] Add prompt/version tracking, redaction, cost controls, and model audit records.

@@ -20,13 +20,15 @@ export function reportCatalog(matterId: string): ReportCatalogEntry[] {
       type: "master_chronology",
       title: "Master Chronology",
       description: "Full dated timeline with gaps, collisions, and late-created records flagged.",
-      available: false,
+      href: `${base}/master-chronology`,
+      available: true,
     },
     {
       type: "investigative_memorandum",
       title: "Investigative Memorandum",
       description: "Narrative summary of findings, distinguishing fact, assertion, inference, and hypothesis.",
-      available: false,
+      href: `${base}/investigative-memorandum`,
+      available: true,
     },
     {
       type: "witness_contradiction_report",
@@ -39,13 +41,15 @@ export function reportCatalog(matterId: string): ReportCatalogEntry[] {
       type: "evidence_source_index",
       title: "Evidence / Source Index",
       description: "Full evidence ledger indexed by source, with provenance and authentication status.",
-      available: false,
+      href: `${base}/evidence-source-index`,
+      available: true,
     },
     {
       type: "case_theory_stress_test",
       title: "Case-Theory Stress Test",
       description: "Defense theory checked against adverse evidence and the weakest assumptions on record.",
-      available: false,
+      href: `${base}/case-theory-stress-test`,
+      available: true,
     },
   ]
 }

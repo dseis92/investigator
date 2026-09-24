@@ -59,3 +59,27 @@ Supabase email OTP authentication used before returning any portal data. The ver
 ## Client-visible portal content
 
 Only appointment details associated with the verified client and preparation documents whose current draft is both final and explicitly marked client-visible. Internal drafts, evidence, analysis, and staff records remain unavailable.
+
+## Recurring task template
+
+A reusable definition of work that may be materialized onto a specific appointment. The template is not itself completed work; each materialization creates an ordinary appointment task that can be assigned, dated, blocked, and audited.
+
+## Court-rule calculation
+
+A proposed deadline produced from a saved jurisdiction rule and a recorded trigger date. The calculation preserves the rule, offset, and trigger so a human can verify or correct the result before relying on it.
+
+## Matter activity
+
+A chronological view of auditable changes to matter-owned work. Activity is a presentation of authoritative audit records, not a separate source of truth.
+
+## Calendar connection
+
+Provider-specific metadata describing whether a user's Google or Outlook calendar is connected and when it last synchronized. Connection metadata never implies that an external event was written successfully; each external event requires a recorded sync result.
+
+## AI assistance run
+
+A matter-scoped, versioned draft produced from structured records for human review. An assistance run is never a final legal conclusion, and its status, model, prompt version, and review decision remain auditable.
+
+## Time entry and invoice
+
+A time entry records work performed, duration, rate, and billable state. An invoice is a draft financial summary that groups submitted time entries; payment processing is a separate provider integration and is not implied by invoice creation.
