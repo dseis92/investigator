@@ -6,7 +6,7 @@ export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
   })
-  if (request.nextUrl.pathname === '/api/health') {
+  if (request.nextUrl.pathname === '/api/health' || request.nextUrl.pathname.startsWith('/api/matterpilot/cron/')) {
     return supabaseResponse
   }
   const env = getPublicEnv()
