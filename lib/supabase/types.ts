@@ -48,6 +48,7 @@ type CalendarNoteRow = { id: string; matter_id: string | null; title: string; no
 type IntakeReviewRow = { id: string; matter_id: string; booking_request_id: string; reviewer_id: string; decision: string; conflict_status: string; reviewer_note: string | null; created_at: string; updated_at: string }
 type CalendarAvailabilityRuleRow = { id: string; matter_id: string; weekday: number; start_time: string; end_time: string; timezone: string; label: string | null; is_active: boolean; created_by: string; created_at: string; updated_at: string }
 type CalendarBlackoutRow = { id: string; matter_id: string; starts_at: string; ends_at: string; reason: string; status: string; created_by: string; created_at: string; updated_at: string }
+type UserPreferenceRow = { user_id: string; preferences: Json; created_at: string; updated_at: string }
 type AppointmentRescheduleHistoryRow = { id: string; matter_id: string; appointment_id: string; previous_starts_at: string; previous_ends_at: string; next_starts_at: string; next_ends_at: string; reason: string | null; changed_by: string; created_at: string }
 type ClientPortalMessageRow = { id: string; matter_id: string; sender_role: string; sender_email: string; body: string; created_by: string | null; created_at: string }
 type ClientPortalActivityRow = { id: string; matter_id: string; activity_type: string; actor_role: string; summary: string; created_at: string }
@@ -133,6 +134,7 @@ export type Database = {
       calendar_availability_rules: MatterPilotTable<CalendarAvailabilityRuleRow, MatterPilotInsert<CalendarAvailabilityRuleRow>, MatterPilotUpdate<CalendarAvailabilityRuleRow>>
       calendar_blackouts: MatterPilotTable<CalendarBlackoutRow, MatterPilotInsert<CalendarBlackoutRow>, MatterPilotUpdate<CalendarBlackoutRow>>
       appointment_reschedule_history: MatterPilotTable<AppointmentRescheduleHistoryRow, MatterPilotInsert<AppointmentRescheduleHistoryRow>, MatterPilotUpdate<AppointmentRescheduleHistoryRow>>
+      user_preferences: MatterPilotTable<UserPreferenceRow, MatterPilotInsert<UserPreferenceRow>, MatterPilotUpdate<UserPreferenceRow>>
       analyses: {
         Row: {
           ai_model: string | null

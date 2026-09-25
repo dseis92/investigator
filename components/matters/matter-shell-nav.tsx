@@ -77,7 +77,7 @@ export function MatterWorkspaceShell({ matter, children }: { matter: WorkspaceMa
             <div className="my-7 border-t border-white/10" />
             <p className="px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[#93a5ae]">Tools</p>
             <Link href="/matters" onClick={() => setMobileNav(false)} className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-[#b8c2c6] transition-colors hover:bg-white/7 hover:text-white"><ArrowLeft className="size-4" />All matters</Link>
-            <Link href="/matterpilot#settings" onClick={() => setMobileNav(false)} className="mt-1 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-[#b8c2c6] transition-colors hover:bg-white/7 hover:text-white"><Settings2 className="size-4" />Settings</Link>
+            <Link href="/matterpilot/settings" onClick={() => setMobileNav(false)} className="mt-1 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-[#b8c2c6] transition-colors hover:bg-white/7 hover:text-white"><Settings2 className="size-4" />Settings</Link>
           </div>
 
           <div className="border-t border-white/10 p-4">

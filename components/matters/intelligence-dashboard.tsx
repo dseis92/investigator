@@ -113,7 +113,7 @@ function WorkspaceSidebar({ mobileNav, onClose }: { mobileNav: boolean; onClose:
             <FileSearch className="size-4" />
             TraceLine intelligence
           </Link>
-          <Link href="/matterpilot#settings" onClick={onClose} className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-[#b8c2c6] transition-colors hover:bg-white/7 hover:text-white">
+          <Link href="/matterpilot/settings" onClick={onClose} className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-[#b8c2c6] transition-colors hover:bg-white/7 hover:text-white">
             <Settings2 className="size-4" />
             Settings
           </Link>
