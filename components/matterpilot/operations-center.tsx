@@ -147,6 +147,7 @@ export function OperationsCenter({
   aiRuns,
   aiConfigured,
   calendarReady,
+  calendarNotice,
 }: {
   matters: Matter[]
   templates: Template[]
@@ -160,6 +161,7 @@ export function OperationsCenter({
   aiRuns: AiRun[]
   aiConfigured: boolean
   calendarReady: { google: boolean; outlook: boolean }
+  calendarNotice?: "connected" | "error" | "cancelled"
 }) {
   const router = useRouter()
   const [message, setMessage] = useState("")
@@ -178,6 +180,14 @@ export function OperationsCenter({
       setMessage(result.message ?? "Saved.")
       router.refresh()
     }
+  }
+
+  function connectionLabel(status?: string) {
+    if (!status) return "Not connected"
+    if (status === "connected") return "Connected"
+    if (status === "pending") return "Authorization pending"
+    if (status === "error") return "Needs attention"
+    return status
   }
 
   const [templateMatter, setTemplateMatter] = useState(matters[0]?.id ?? "")
@@ -344,6 +354,23 @@ export function OperationsCenter({
           <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
             <Check className="mt-0.5 size-4 shrink-0" />
             {message}
+          </div>
+        ) : null}
+        {calendarNotice ? (
+          <div className={cn(
+            "flex items-start gap-2 rounded-xl border px-4 py-3 text-sm",
+            calendarNotice === "connected"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+              : calendarNotice === "cancelled"
+                ? "border-amber-200 bg-amber-50 text-amber-800"
+                : "border-rose-200 bg-rose-50 text-rose-800"
+          )}>
+            {calendarNotice === "connected" ? <Check className="mt-0.5 size-4 shrink-0" /> : <X className="mt-0.5 size-4 shrink-0" />}
+            {calendarNotice === "connected"
+              ? "Calendar account connected. Choose Sync this matter to send MatterPilot appointments to the selected calendar."
+              : calendarNotice === "cancelled"
+                ? "Calendar authorization was cancelled. No provider access was saved."
+                : "Calendar authorization did not finish. Review the provider message on the connection card and try again."}
           </div>
         ) : null}
 
@@ -793,10 +820,14 @@ export function OperationsCenter({
                           "rounded-full px-2 py-1 text-[10px] font-bold",
                           connection?.status === "connected"
                             ? "bg-emerald-50 text-emerald-700"
+                            : connection?.status === "error"
+                              ? "bg-rose-50 text-rose-700"
+                              : connection?.status === "pending"
+                                ? "bg-amber-50 text-amber-800"
                             : "bg-[#f1eee8] text-[#737872]"
                         )}
                       >
-                        {connection?.status ?? "Not connected"}
+                        {connectionLabel(connection?.status)}
                       </span>
                     </div>
                     <p className="mt-2 text-xs leading-5 text-[#737872]">
@@ -818,9 +849,11 @@ export function OperationsCenter({
                         ? "Working…"
                         : !ready
                           ? "Configure provider first"
-                          : connection?.status === "connected"
-                            ? "Sync this matter"
-                            : "Connect account"}
+                            : connection?.status === "connected"
+                              ? "Sync this matter"
+                            : connection?.status === "error"
+                              ? "Reconnect account"
+                              : "Connect account"}
                       {connection?.status === "connected" ? <CalendarDays /> : <Link2 />}
                     </Button>
                   </div>

@@ -6,7 +6,10 @@ import { createClient } from "@/lib/supabase/server"
 
 export const metadata: Metadata = { title: "MatterPilot Operations" }
 
-export default async function MatterPilotOperationsPage() {
+export default async function MatterPilotOperationsPage({ searchParams }: { searchParams?: Promise<{ calendar?: string | string[] }> }) {
+  const params = searchParams ? await searchParams : {}
+  const calendarParam = Array.isArray(params.calendar) ? params.calendar[0] : params.calendar
+  const calendarNotice = ["connected", "error", "cancelled"].includes(calendarParam ?? "") ? calendarParam as "connected" | "error" | "cancelled" : undefined
   const supabase = await createClient()
   const { data: userData } = await supabase.auth.getUser()
   if (!userData.user) return null
@@ -39,5 +42,6 @@ export default async function MatterPilotOperationsPage() {
     activity={(activity ?? []).map((entry) => ({ id: entry.id, matter: matterNames.get(entry.matter_id) ?? "Matter", action: entry.action, entityType: entry.entity_type, summary: entry.summary, createdAt: entry.created_at }))}
     aiRuns={(aiRuns ?? []).map((run) => ({ id: run.id, matterId: run.matter_id, matter: matterNames.get(run.matter_id) ?? "Matter", runType: run.run_type, status: run.status, model: run.model, output: (run.output ?? {}) as { headline?: string; summary?: string; priorities?: string[]; risks?: string[]; questions?: string[]; citedRecords?: string[] }, createdAt: run.created_at }))}
     aiConfigured={Boolean(process.env.OPENAI_API_KEY)}
+    calendarNotice={calendarNotice}
   />
 }
