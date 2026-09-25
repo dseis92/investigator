@@ -44,7 +44,7 @@ export default async function MatterPilotPage({ searchParams }: { searchParams?:
         .limit(100)
     : { data: [] }
   const { data: deadlines } = matterIds.length
-    ? await supabase.from("matter_deadlines").select("id, matter_id, title, kind, due_at, priority, status, notes, assigned_to").in("matter_id", matterIds).order("due_at", { ascending: true }).limit(100)
+    ? await supabase.from("matter_deadlines").select("id, matter_id, title, kind, due_at, priority, status, notes, assigned_to, trigger_at, calculation_note").in("matter_id", matterIds).order("due_at", { ascending: true }).limit(100)
     : { data: [] }
   const { data: contacts } = matterIds.length
     ? await supabase.from("matter_contacts").select("id, matter_id, display_name, contact_type, email, phone, notes, status").in("matter_id", matterIds).order("display_name", { ascending: true }).limit(200)
@@ -273,6 +273,8 @@ export default async function MatterPilotPage({ searchParams }: { searchParams?:
       status,
       notes: deadline.notes,
       assignedTo: deadline.assigned_to,
+      triggerAt: deadline.trigger_at,
+      calculationNote: deadline.calculation_note,
     }
   })
 

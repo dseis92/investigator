@@ -170,6 +170,8 @@ export type DashboardDeadline = {
   status: "open" | "at_risk" | "missed" | "completed" | "waived"
   notes: string | null
   assignedTo: string | null
+  triggerAt?: string | null
+  calculationNote?: string | null
 }
 
 export type DashboardContact = {

@@ -28,6 +28,7 @@ import {
   createTimeEntryAction,
   markNotificationReadAction,
   materializeTaskTemplateAction,
+  previewCourtDeadlineAction,
   requestCalendarConnectionAction,
   refreshNotificationQueueAction,
   reviewAiInsightAction,
@@ -226,6 +227,7 @@ export function OperationsCenter({
   const [deadlineRule, setDeadlineRule] = useState("")
   const [deadlineTitle, setDeadlineTitle] = useState("")
   const [deadlineTrigger, setDeadlineTrigger] = useState("")
+  const [deadlinePreview, setDeadlinePreview] = useState<{ dueAt: string; calculationNote: string } | null>(null)
 
   async function saveRule() {
     begin("rule")
@@ -243,16 +245,25 @@ export function OperationsCenter({
 
   async function calculateDeadline() {
     begin("deadline")
-    finish(
-      await calculateCourtDeadlineAction({
-        matterId: deadlineMatter,
-        ruleId: deadlineRule,
-        title: deadlineTitle,
-        triggerAt: new Date(deadlineTrigger).toISOString(),
-        kind: "filing",
-        priority: "high",
-      })
-    )
+    const result = await calculateCourtDeadlineAction({ matterId: deadlineMatter, ruleId: deadlineRule, title: deadlineTitle, triggerAt: new Date(deadlineTrigger).toISOString(), kind: "filing", priority: "high" })
+    finish(result)
+    if (result.ok) setDeadlinePreview(null)
+  }
+
+  async function previewDeadline() {
+    begin("deadline-preview")
+    const result = await previewCourtDeadlineAction({ matterId: deadlineMatter, ruleId: deadlineRule, title: deadlineTitle, triggerAt: new Date(deadlineTrigger).toISOString(), kind: "filing", priority: "high" })
+    setSaving("")
+    if (!result.ok) {
+      setError(result.error)
+      return
+    }
+    if (!result.dueAt || !result.calculationNote) {
+      setError("The rule did not return a complete calculation preview.")
+      return
+    }
+    setDeadlinePreview({ dueAt: result.dueAt, calculationNote: result.calculationNote })
+    setMessage(result.message ?? "Review the proposed date before saving.")
   }
 
   const [timeMatter, setTimeMatter] = useState(matters[0]?.id ?? "")
@@ -731,13 +742,19 @@ export function OperationsCenter({
               <Select
                 label="Matter"
                 value={deadlineMatter}
-                onChange={setDeadlineMatter}
+                onChange={(value) => {
+                  setDeadlineMatter(value)
+                  setDeadlinePreview(null)
+                }}
                 options={matters.map((matter) => [matter.id, matter.name])}
               />
               <Select
                 label="Court rule"
                 value={deadlineRule}
-                onChange={setDeadlineRule}
+                onChange={(value) => {
+                  setDeadlineRule(value)
+                  setDeadlinePreview(null)
+                }}
                 options={rules.map((rule) => [
                   rule.id,
                   `${rule.name} · ${rule.jurisdiction}`,
@@ -747,7 +764,10 @@ export function OperationsCenter({
                 Deadline title
                 <Input
                   value={deadlineTitle}
-                  onChange={(event) => setDeadlineTitle(event.target.value)}
+                  onChange={(event) => {
+                    setDeadlineTitle(event.target.value)
+                    setDeadlinePreview(null)
+                  }}
                   placeholder="Response due"
                 />
               </label>
@@ -756,12 +776,23 @@ export function OperationsCenter({
                 <Input
                   type="datetime-local"
                   value={deadlineTrigger}
-                  onChange={(event) => setDeadlineTrigger(event.target.value)}
+                  onChange={(event) => {
+                    setDeadlineTrigger(event.target.value)
+                    setDeadlinePreview(null)
+                  }}
                 />
               </label>
             </div>
+            {deadlinePreview ? (
+              <div className="mt-4 rounded-xl border border-[#d8c7bb] bg-[#fffaf6] p-4">
+                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#a24f31]">Proposed deadline</p>
+                <p className="mt-2 font-serif text-2xl font-semibold text-[#23313d]">{new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(deadlinePreview.dueAt))}</p>
+                <p className="mt-2 text-xs leading-5 text-[#6f6258]">{deadlinePreview.calculationNote}</p>
+                <p className="mt-3 border-t border-[#eadbd0] pt-3 text-[11px] leading-5 text-[#8b604c]">Review this date against the current court rule, holidays, service method, and filing cutoff before adding it to the matter.</p>
+              </div>
+            ) : null}
             <Button
-              onClick={() => void calculateDeadline()}
+              onClick={() => void (deadlinePreview ? calculateDeadline() : previewDeadline())}
               disabled={
                 saving === "deadline" ||
                 !deadlineMatter ||
@@ -771,11 +802,10 @@ export function OperationsCenter({
               }
               className="mt-3 w-full bg-[#a24f31] hover:bg-[#8f432a]"
             >
-              {saving === "deadline"
-                ? "Calculating…"
-                : "Calculate and add deadline"}
+              {saving === "deadline-preview" ? "Calculating…" : saving === "deadline" ? "Saving…" : deadlinePreview ? "Add calculated deadline" : "Preview proposed date"}
               <CalendarDays />
             </Button>
+            {deadlinePreview ? <Button variant="ghost" onClick={() => setDeadlinePreview(null)} disabled={Boolean(saving)} className="mt-1 w-full text-[#737872]">Edit calculation inputs</Button> : null}
           </Panel>
         </section>
 

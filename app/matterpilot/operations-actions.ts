@@ -11,7 +11,7 @@ import { buildCalendarAuthorizationUrl, hashOAuthState, isCalendarProviderConfig
 import { syncCalendarConnection } from "@/lib/calendar/sync"
 import { createClient } from "@/lib/supabase/server"
 
-type OperationResult = { ok: true; id?: string; message?: string; url?: string } | { ok: false; error: string }
+type OperationResult = { ok: true; id?: string; message?: string; url?: string; dueAt?: string; calculationNote?: string } | { ok: false; error: string }
 
 const taskTemplateSchema = z.object({
   matterId: z.string().uuid(),
@@ -153,6 +153,10 @@ function calculateDueDate(triggerAt: string, offsetDays: number, businessDays: b
   return date
 }
 
+function describeCourtCalculation(rule: { name: string; offset_days: number; business_days: boolean }) {
+  return `${rule.name}: ${rule.offset_days >= 0 ? `${rule.offset_days} day${rule.offset_days === 1 ? "" : "s"} after` : `${Math.abs(rule.offset_days)} day${Math.abs(rule.offset_days) === 1 ? "" : "s"} before`} trigger; ${rule.business_days ? "business days (weekends skipped while counting)" : "calendar days"}. Court holidays, local filing cutoffs, service extensions, and jurisdiction-specific exceptions still require human verification.`
+}
+
 const deadlineRuleSchema = z.object({
   matterId: z.string().uuid(),
   ruleId: z.string().uuid(),
@@ -163,6 +167,18 @@ const deadlineRuleSchema = z.object({
   notes: z.string().trim().max(2000).optional(),
 })
 
+export async function previewCourtDeadlineAction(input: z.input<typeof deadlineRuleSchema>): Promise<OperationResult> {
+  const parsed = deadlineRuleSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: "Choose a rule, trigger date, and deadline title." }
+  await requireCurrentUser()
+  const supabase = await createClient()
+  const { data: rule } = await supabase.from("court_rule_definitions").select("id, name, offset_days, business_days").eq("id", parsed.data.ruleId).eq("active", true).maybeSingle()
+  if (!rule) return { ok: false, error: "That court rule is no longer active." }
+  const dueAt = calculateDueDate(parsed.data.triggerAt, rule.offset_days, rule.business_days)
+  const calculationNote = describeCourtCalculation(rule)
+  return { ok: true, dueAt: dueAt.toISOString(), calculationNote, message: `Proposed date: ${dueAt.toLocaleDateString("en-US")}. Review it before saving.` }
+}
+
 export async function calculateCourtDeadlineAction(input: z.input<typeof deadlineRuleSchema>): Promise<OperationResult> {
   const parsed = deadlineRuleSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: "Choose a rule, trigger date, and deadline title." }
@@ -171,7 +187,7 @@ export async function calculateCourtDeadlineAction(input: z.input<typeof deadlin
   const { data: rule } = await supabase.from("court_rule_definitions").select("id, name, offset_days, business_days").eq("id", parsed.data.ruleId).eq("active", true).maybeSingle()
   if (!rule) return { ok: false, error: "That court rule is no longer active." }
   const dueAt = calculateDueDate(parsed.data.triggerAt, rule.offset_days, rule.business_days)
-  const calculationNote = `${rule.name}: ${rule.offset_days >= 0 ? `${rule.offset_days} day${rule.offset_days === 1 ? "" : "s"} after` : `${Math.abs(rule.offset_days)} day${Math.abs(rule.offset_days) === 1 ? "" : "s"} before`} trigger; ${rule.business_days ? "business days" : "calendar days"}.`
+  const calculationNote = describeCourtCalculation(rule)
   const { data, error } = await supabase.from("matter_deadlines").insert({
     matter_id: parsed.data.matterId,
     title: parsed.data.title,
