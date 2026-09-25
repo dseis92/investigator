@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react"
 
+import { BackToDashboard } from "@/components/matterpilot/back-to-dashboard"
 import {
   calculateCourtDeadlineAction,
   createCourtRuleAction,
@@ -329,12 +330,7 @@ export function OperationsCenter({
                 reviewable.
               </p>
             </div>
-            <Link
-              href="/matterpilot"
-              className="inline-flex h-9 items-center justify-center rounded-lg border border-white/20 px-3.5 text-xs font-semibold text-white hover:bg-white/10"
-            >
-              Back to dashboard
-            </Link>
+            <BackToDashboard className="border-white/20 bg-transparent text-white hover:border-white/30 hover:bg-white/10 hover:text-white" />
           </div>
         </header>
 

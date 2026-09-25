@@ -19,6 +19,7 @@ import { usePathname } from "next/navigation"
 import { useState } from "react"
 
 import { SignOutButton } from "@/components/sign-out-button"
+import { BackToDashboard } from "@/components/matterpilot/back-to-dashboard"
 import type { Matter } from "@/lib/domain"
 import { humanizeEnum } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -92,7 +93,10 @@ export function MatterWorkspaceShell({ matter, children }: { matter: WorkspaceMa
               <button type="button" onClick={() => setMobileNav(true)} className="rounded-lg p-2 text-[#54615e] hover:bg-[#eeeae3] lg:hidden" aria-label="Open matter navigation"><Menu className="size-5" /></button>
               <div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#b65f3a]">TraceLine intelligence · {matter.matter_number}</p><p className="mt-0.5 truncate text-sm font-semibold text-[#35433e]">{matter.name}</p></div>
             </div>
-            <Link href="/matters" className="hidden items-center gap-2 rounded-lg border border-[#ded9d0] bg-white px-3 py-2 text-xs font-semibold text-[#59645e] transition-colors hover:border-[#c08a6d] hover:text-[#a24f31] sm:inline-flex"><ArrowLeft className="size-3.5" />All matters</Link>
+            <div className="flex items-center gap-2">
+              <BackToDashboard className="hidden sm:inline-flex" />
+              <Link href="/matters" className="inline-flex items-center gap-2 rounded-lg border border-[#ded9d0] bg-white px-3 py-2 text-xs font-semibold text-[#59645e] transition-colors hover:border-[#c08a6d] hover:text-[#a24f31]"><ArrowLeft className="size-3.5" />All matters</Link>
+            </div>
           </header>
           <div className="mx-auto max-w-[1500px] px-4 py-6 sm:px-7 sm:py-8">{children}</div>
         </main>

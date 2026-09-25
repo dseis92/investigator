@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
+import { deliverQueuedAppointmentEmails } from "@/lib/email/delivery"
 
 export const runtime = "nodejs"
 
@@ -29,5 +30,11 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: false, error: "Operations job failed." }, { status: 500 })
   }
 
-  return NextResponse.json({ ok: true, run: data })
+  try {
+    const emailDelivery = await deliverQueuedAppointmentEmails()
+    return NextResponse.json({ ok: true, run: data, emailDelivery })
+  } catch (deliveryError) {
+    console.error("MatterPilot email delivery failed", deliveryError)
+    return NextResponse.json({ ok: false, error: "Operations completed, but email delivery failed.", run: data }, { status: 500 })
+  }
 }

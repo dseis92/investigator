@@ -28,6 +28,7 @@ import { useMemo, useState } from "react"
 import { usePathname } from "next/navigation"
 
 import { CreateMatterDialog } from "@/components/matters/create-matter-dialog"
+import { BackToDashboard } from "@/components/matterpilot/back-to-dashboard"
 import { SignOutButton } from "@/components/sign-out-button"
 import { formatDate, humanizeEnum } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -211,6 +212,7 @@ export function IntelligenceDashboard({ matters }: { matters: IntelligenceMatter
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
+              <BackToDashboard className="hidden sm:inline-flex" />
               <label className="hidden items-center gap-2 rounded-lg border border-[#ded9d0] bg-white px-3 py-2 text-xs text-[#8a8d87] md:flex">
                 <Search className="size-3.5" />
                 <span className="sr-only">Search matters</span>

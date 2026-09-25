@@ -132,6 +132,26 @@
   break-inside: avoid;
 }
 
+/*
+ * Keep every native button aligned with the shared MatterPilot action style,
+ * including legacy controls that have not yet moved to components/ui/button.
+ * The important modifier intentionally wins over one-off background classes
+ * so a button cannot silently drift from the product-wide interaction rule.
+ */
+button {
+  background-color: transparent !important;
+  color: #b65f3a !important;
+  transition:
+    background-color 300ms ease,
+    color 300ms ease,
+    transform 300ms ease;
+}
+
+button:hover:not(:disabled) {
+  background-color: #b65f3a !important;
+  color: #ffffff !important;
+}
+
 @media print {
   body {
     background: white;

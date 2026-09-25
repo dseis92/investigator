@@ -38,7 +38,7 @@ type AppointmentReminderRow = { id: string; matter_id: string; appointment_id: s
 type AppointmentPacketRow = { id: string; matter_id: string; appointment_id: string; token: string; status: string; expires_at: string; viewed_at: string | null; completed_at: string | null; created_by: string; created_at: string; updated_at: string }
 type AppointmentPacketReminderRow = { id: string; matter_id: string; packet_id: string; kind: string; send_at: string; status: string; created_at: string; updated_at: string }
 type ClientPortalGrantRow = { id: string; matter_id: string; client_email: string; client_name: string | null; status: string; last_accessed_at: string | null; revoked_at: string | null; created_by: string; created_at: string; updated_at: string }
-type AppointmentCommunicationRow = { id: string; matter_id: string; appointment_id: string; channel: string; direction: string; status: string; recipient: string | null; subject: string | null; body: string; provider: string | null; provider_message_id: string | null; error_message: string | null; sent_at: string | null; created_by: string; created_at: string; updated_at: string }
+type AppointmentCommunicationRow = { id: string; matter_id: string; appointment_id: string; channel: string; direction: string; status: string; recipient: string | null; subject: string | null; body: string; provider: string | null; provider_message_id: string | null; error_message: string | null; sent_at: string | null; attempt_count: number; next_attempt_at: string; last_attempt_at: string | null; provider_response: Json | null; created_by: string; created_at: string; updated_at: string }
 type MatterDeadlineRow = { id: string; matter_id: string; title: string; kind: string; due_at: string; priority: string; status: string; notes: string | null; assigned_to: string | null; court_rule_id: string | null; trigger_at: string | null; calculation_note: string | null; created_by: string; created_at: string; updated_at: string }
 type MatterContactRow = { id: string; matter_id: string; display_name: string; contact_type: string; email: string | null; phone: string | null; notes: string | null; status: string; created_by: string; created_at: string; updated_at: string }
 type EvidenceArtifactRow = { id: string; matter_id: string; evidence_id: string; storage_path: string; file_name: string; mime_type: string; size_bytes: number; sha256_hash: string | null; created_by: string; created_at: string; lifecycle_status: string; replaces_artifact_id: string | null; retention_until: string | null; legal_hold: boolean; released_at: string | null }
@@ -1991,6 +1991,10 @@ export type Database = {
       resolve_entity_matter_id: {
         Args: { p_entity_id: string; p_entity_type: string }
         Returns: string
+      }
+      claim_matterpilot_email_communications: {
+        Args: { p_limit?: number; p_now?: string }
+        Returns: AppointmentCommunicationRow[]
       }
     }
     Enums: {

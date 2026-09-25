@@ -6,6 +6,7 @@ import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 
 import { reviewIntakeRequestAction } from "@/app/matterpilot/actions"
+import { BackToDashboard } from "@/components/matterpilot/back-to-dashboard"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -46,7 +47,7 @@ export function IntakeDesk({ requests, matters, reviews, conflictMatches }: { re
 
   return (
     <div className="min-h-svh bg-[#f4f1eb] text-[#23313d]">
-      <header className="flex h-20 items-center justify-between border-b border-[#ded9d0] bg-[#fbfaf7] px-5 sm:px-10"><Link href="/matterpilot" className="flex items-center gap-3"><span className="flex size-9 items-center justify-center rounded-xl bg-[#23313d] text-white"><ShieldCheck className="size-4" /></span><span><span className="block font-serif text-lg font-semibold tracking-tight">MatterPilot</span><span className="block text-[10px] font-medium uppercase tracking-[0.2em] text-[#8b8d88]">Intake desk</span></span></Link><Link href="/matterpilot" className="flex items-center gap-2 text-sm font-semibold text-[#b65f3a] hover:underline"><ArrowLeft className="size-4" /> Calendar</Link></header>
+      <header className="flex h-20 items-center justify-between border-b border-[#ded9d0] bg-[#fbfaf7] px-5 sm:px-10"><Link href="/matterpilot" className="flex items-center gap-3"><span className="flex size-9 items-center justify-center rounded-xl bg-[#23313d] text-white"><ShieldCheck className="size-4" /></span><span><span className="block font-serif text-lg font-semibold tracking-tight">MatterPilot</span><span className="block text-[10px] font-medium uppercase tracking-[0.2em] text-[#8b8d88]">Intake desk</span></span></Link><BackToDashboard /></header>
       <main className="mx-auto max-w-[1400px] px-4 py-6 sm:px-7 sm:py-8">
         <div className="mb-7"><p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#b65f3a]">New client pipeline</p><h1 className="mt-2 font-serif text-3xl font-semibold tracking-[-0.03em] text-[#23313d] sm:text-4xl">Review before it reaches the calendar.</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-[#737872]">Confirm the conflict check, decide what happens next, and let MatterPilot create the preparation workflow when you accept a request.</p></div>
         {requests.length === 0 ? <div className="rounded-2xl border border-[#ded9d0] bg-[#fbfaf7] p-12 text-center shadow-sm"><span className="mx-auto flex size-12 items-center justify-center rounded-full bg-[#e7eee9] text-emerald-700"><Check className="size-5" /></span><h2 className="mt-4 font-serif text-2xl font-semibold">Your intake queue is clear.</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[#737872]">New requests from your public booking link will appear here for conflict review.</p><Link href="/book/demo" className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-[#b65f3a] hover:underline">Preview public booking <ArrowLeft className="size-4 rotate-180" /></Link></div> : <div className="grid gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
