@@ -2,6 +2,7 @@
 
 import {
   ArrowLeft,
+  Activity,
   FileText,
   GitCompareArrows,
   HelpCircle,
@@ -30,6 +31,7 @@ const navItems = (matterId: string) => [
   { href: `/matters/${matterId}/subjects`, label: "Subjects", icon: Users },
   { href: `/matters/${matterId}/evidence`, label: "Evidence", icon: ListTree },
   { href: `/matters/${matterId}/timeline`, label: "Timeline", icon: GitCompareArrows },
+  { href: `/matters/${matterId}/activity`, label: "Activity", icon: Activity },
   { href: `/matters/${matterId}/contradictions`, label: "Contradictions", icon: GitCompareArrows },
   { href: `/matters/${matterId}/analysis`, label: "Analysis", icon: Sparkles },
   { href: `/matters/${matterId}/reports`, label: "Reports", icon: FileText },
