@@ -122,7 +122,7 @@ type AiRun = {
   id: string
   matterId: string
   matter: string
-  runType: string
+  runType: "matter_brief" | "evidence_summary" | "contradiction_scan" | "timeline_gap_scan" | "missing_document_scan" | "deposition_questions"
   status: string
   model: string | null
   output: {
@@ -274,6 +274,7 @@ export function OperationsCenter({
   const [selectedEntries, setSelectedEntries] = useState<string[]>([])
   const [invoiceMatter, setInvoiceMatter] = useState(matters[0]?.id ?? "")
   const [invoiceNumber, setInvoiceNumber] = useState("")
+  const [aiRunType, setAiRunType] = useState<AiRun["runType"]>("matter_brief")
 
   async function saveTime() {
     begin("time")
@@ -349,6 +350,11 @@ export function OperationsCenter({
         runType: runType as "matter_brief",
       })
     )
+  }
+
+  async function reviewInsight(run: AiRun, status: "under_review" | "approved" | "rejected") {
+    begin(`${status}-${run.id}`)
+    finish(await reviewAiInsightAction({ matterId: run.matterId, runId: run.id, status }))
   }
 
   return (
@@ -1089,6 +1095,8 @@ export function OperationsCenter({
             }
           >
             <div className="space-y-2">
+              <label className="block text-[11px] font-semibold text-[#63747a]">Draft type<select value={aiRunType} onChange={(event) => setAiRunType(event.target.value as AiRun["runType"])} className="mt-1 h-9 w-full rounded-lg border border-[#c8d8dc] bg-white px-2 text-xs font-normal text-[#385367] outline-none focus:border-[#385367]"><option value="matter_brief">Matter brief</option><option value="evidence_summary">Evidence summary</option><option value="contradiction_scan">Contradiction scan</option><option value="timeline_gap_scan">Timeline gap scan</option><option value="missing_document_scan">Missing-document scan</option><option value="deposition_questions">Deposition questions</option></select></label>
+              <div className="rounded-lg border border-[#c8d8dc] bg-white px-3 py-2 text-[11px] leading-5 text-[#63747a]">AI drafts use only structured matter records, avoid client names and email addresses, and always require attorney review before use.</div>
               {matters.slice(0, 8).map((matter) => (
                 <div
                   key={matter.id}
@@ -1109,10 +1117,10 @@ export function OperationsCenter({
                     size="sm"
                     variant="outline"
                     disabled={!aiConfigured || saving === `ai-${matter.id}`}
-                    onClick={() => void generateInsight(matter.id)}
+                    onClick={() => void generateInsight(matter.id, aiRunType)}
                     className="border-[#ded9d0] px-2 text-[10px] text-[#385367]"
                   >
-                    {saving === `ai-${matter.id}` ? "Drafting…" : "Draft brief"}
+                    {saving === `ai-${matter.id}` ? "Drafting…" : "Generate draft"}
                     <WandSparkles />
                   </Button>
                 </div>
@@ -1140,39 +1148,32 @@ export function OperationsCenter({
                       {run.output.summary}
                     </p>
                   ) : null}
+                  <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                    {(["priorities", "risks", "questions"] as const).map((key) => run.output?.[key]?.length ? <div key={key} className="rounded-lg bg-white p-2.5"><p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#78909a]">{key === "priorities" ? "Priorities" : key === "risks" ? "Risks" : "Questions"}</p><ul className="mt-1 space-y-1 text-[11px] leading-4 text-[#63747a]">{run.output[key]!.slice(0, 3).map((item, index) => <li key={`${key}-${index}`}>• {item}</li>)}</ul></div> : null)}
+                  </div>
+                  {run.output?.citedRecords?.length ? <details className="mt-2 rounded-lg border border-[#dce8ea] bg-white px-3 py-2 text-[11px] text-[#63747a]"><summary className="cursor-pointer font-semibold text-[#385367]">View cited records ({run.output.citedRecords.length})</summary><ul className="mt-2 space-y-1">{run.output.citedRecords.map((record) => <li key={record}>• {record}</li>)}</ul></details> : null}
                   {run.status === "draft" ? (
                     <div className="mt-3 flex gap-2">
                       <Button
                         size="sm"
                         onClick={() => {
-                          begin(`approve-${run.id}`)
-                          void reviewAiInsightAction({
-                            matterId: run.matterId,
-                            runId: run.id,
-                            status: "approved",
-                          }).then(finish)
+                          void reviewInsight(run, "under_review")
                         }}
                         className="bg-[#385367] hover:bg-[#294351]"
                       >
-                        Approve draft
+                        Send to review
                       </Button>
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => {
-                          begin(`reject-${run.id}`)
-                          void reviewAiInsightAction({
-                            matterId: run.matterId,
-                            runId: run.id,
-                            status: "rejected",
-                          }).then(finish)
-                        }}
+                        onClick={() => void reviewInsight(run, "rejected")}
                         className="border-[#c8d8dc] text-[#385367]"
                       >
                         Reject
                       </Button>
                     </div>
                   ) : null}
+                  {run.status === "under_review" ? <div className="mt-3 flex gap-2"><Button size="sm" onClick={() => void reviewInsight(run, "approved")} className="bg-[#385367] hover:bg-[#294351]">Approve for use</Button><Button size="sm" variant="outline" onClick={() => void reviewInsight(run, "rejected")} className="border-[#c8d8dc] text-[#385367]">Reject</Button></div> : null}
                 </article>
               ))}
             </div>
