@@ -34,6 +34,7 @@ import {
   reviewAiInsightAction,
   runMatterAiInsightAction,
   syncCalendarConnectionAction,
+  updateInvoiceStatusAction,
 } from "@/app/matterpilot/operations-actions"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -300,6 +301,24 @@ export function OperationsCenter({
     )
     setSelectedEntries([])
     setInvoiceNumber("")
+  }
+
+  async function updateInvoice(invoice: Invoice, status: "draft" | "sent" | "paid" | "void") {
+    begin(`invoice-${invoice.id}`)
+    finish(await updateInvoiceStatusAction({ matterId: invoice.matterId, invoiceId: invoice.id, status }))
+  }
+
+  const submittedEntries = timeEntries.filter((entry) => entry.status === "submitted")
+  const submittedMinutes = submittedEntries.reduce((sum, entry) => sum + entry.durationMinutes, 0)
+  const submittedValue = submittedEntries.reduce((sum, entry) => sum + Math.round(entry.durationMinutes * entry.rateCents / 60), 0)
+  const draftInvoiceValue = invoices.filter((invoice) => invoice.status === "draft").reduce((sum, invoice) => sum + invoice.subtotalCents, 0)
+
+  function invoiceStatusLabel(status: string) {
+    return status === "sent" ? "Marked sent" : status === "paid" ? "Paid" : status === "void" ? "Void" : "Draft"
+  }
+
+  function invoiceStatusClass(status: string) {
+    return status === "paid" ? "bg-emerald-50 text-emerald-700" : status === "sent" ? "bg-sky-50 text-sky-700" : status === "void" ? "bg-slate-100 text-slate-600" : "bg-amber-50 text-amber-800"
   }
 
   const [calendarMatter, setCalendarMatter] = useState(matters[0]?.id ?? "")
@@ -1004,19 +1023,16 @@ export function OperationsCenter({
               </div>
             </div>
             <div className="mt-4 border-t border-[#eee9e2] pt-4">
+              <div className="mb-4 grid gap-2 sm:grid-cols-3">
+                <div className="rounded-lg bg-[#fffaf6] p-3"><p className="text-[10px] font-bold uppercase tracking-[0.13em] text-[#9b765f]">Unbilled time</p><p className="mt-1 text-lg font-semibold text-[#23313d]">{submittedMinutes} min</p><p className="text-[10px] text-[#8b8d88]">${(submittedValue / 100).toFixed(2)} at current rates</p></div>
+                <div className="rounded-lg bg-[#fffaf6] p-3"><p className="text-[10px] font-bold uppercase tracking-[0.13em] text-[#9b765f]">Draft invoices</p><p className="mt-1 text-lg font-semibold text-[#23313d]">${(draftInvoiceValue / 100).toFixed(2)}</p><p className="text-[10px] text-[#8b8d88]">Not sent to a client</p></div>
+                <div className="rounded-lg bg-[#fffaf6] p-3"><p className="text-[10px] font-bold uppercase tracking-[0.13em] text-[#9b765f]">Payment status</p><p className="mt-1 text-lg font-semibold text-[#23313d]">{invoices.filter((invoice) => invoice.status === "paid").length}</p><p className="text-[10px] text-[#8b8d88]">Marked paid manually</p></div>
+              </div>
               {invoices.length ? (
                 invoices.slice(0, 6).map((invoice) => (
-                  <div
-                    key={invoice.id}
-                    className="flex items-center justify-between gap-3 py-2 text-xs"
-                  >
-                    <span className="font-semibold text-[#39443f]">
-                      {invoice.invoiceNumber} · {invoice.matter}
-                    </span>
-                    <span className="text-[#8b8d88]">
-                      ${(invoice.subtotalCents / 100).toFixed(2)} ·{" "}
-                      {invoice.status}
-                    </span>
+                  <div key={invoice.id} className="flex flex-col gap-3 border-b border-[#eee9e2] py-3 last:border-0 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="font-semibold text-[#39443f]">{invoice.invoiceNumber} · {invoice.matter}</span><span className={cn("rounded-full px-2 py-1 text-[10px] font-bold", invoiceStatusClass(invoice.status))}>{invoiceStatusLabel(invoice.status)}</span></div><p className="mt-1 text-[11px] text-[#8b8d88]">${(invoice.subtotalCents / 100).toFixed(2)} · {invoice.dueAt ? `Due ${invoice.dueAt}` : "No due date"}</p></div>
+                    <div className="flex flex-wrap items-center gap-2">{invoice.status === "draft" ? <Button size="sm" variant="outline" disabled={saving === `invoice-${invoice.id}`} onClick={() => void updateInvoice(invoice, "sent")} className="border-[#ded9d0] px-2.5 text-[11px] text-[#a24f31]">{saving === `invoice-${invoice.id}` ? "Saving…" : "Mark sent"}</Button> : null}{invoice.status === "sent" ? <Button size="sm" disabled={saving === `invoice-${invoice.id}`} onClick={() => void updateInvoice(invoice, "paid")} className="bg-[#385367] px-2.5 text-[11px] hover:bg-[#294351]">{saving === `invoice-${invoice.id}` ? "Saving…" : "Mark paid"}</Button> : null}{invoice.status === "draft" || invoice.status === "sent" ? <Button size="sm" variant="ghost" disabled={saving === `invoice-${invoice.id}`} onClick={() => void updateInvoice(invoice, "void")} className="px-2.5 text-[11px] text-[#737872]">Void</Button> : null}</div>
                   </div>
                 ))
               ) : (

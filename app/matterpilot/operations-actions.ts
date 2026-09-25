@@ -267,6 +267,33 @@ export async function createInvoiceAction(input: z.input<typeof invoiceSchema>):
   return { ok: true, id: invoice.id }
 }
 
+const invoiceStatusSchema = z.object({
+  matterId: z.string().uuid(),
+  invoiceId: z.string().uuid(),
+  status: z.enum(["draft", "sent", "paid", "void"]),
+})
+
+export async function updateInvoiceStatusAction(input: z.input<typeof invoiceStatusSchema>): Promise<OperationResult> {
+  const parsed = invoiceStatusSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: "That invoice status update is not valid." }
+  await requireCurrentUser()
+  const supabase = await createClient()
+  const { data: invoice } = await supabase.from("billing_invoices").select("id, invoice_number, status").eq("id", parsed.data.invoiceId).eq("matter_id", parsed.data.matterId).maybeSingle()
+  if (!invoice) return { ok: false, error: "That invoice is no longer available." }
+  const allowedTransitions: Record<string, string[]> = {
+    draft: ["sent", "void"],
+    sent: ["paid", "void"],
+    paid: [],
+    void: ["draft"],
+  }
+  if (!allowedTransitions[invoice.status]?.includes(parsed.data.status)) return { ok: false, error: `An invoice marked ${invoice.status} cannot be changed to ${parsed.data.status}.` }
+  const { error } = await supabase.from("billing_invoices").update({ status: parsed.data.status, updated_at: new Date().toISOString() }).eq("id", invoice.id).eq("matter_id", parsed.data.matterId)
+  if (error) return { ok: false, error: error.message }
+  await logAuditEvent({ matterId: parsed.data.matterId, entityType: "billing_invoice", entityId: invoice.id, action: "update", summary: `Marked invoice ${invoice.invoice_number} ${parsed.data.status}` })
+  revalidatePath("/matterpilot/operations")
+  return { ok: true, id: invoice.id, message: `Invoice ${invoice.invoice_number} marked ${parsed.data.status}.` }
+}
+
 export async function requestCalendarConnectionAction(input: { provider: CalendarProvider; matterId: string }): Promise<OperationResult> {
   const parsed = z.object({ provider: z.enum(["google", "outlook"]), matterId: z.string().uuid() }).safeParse(input)
   if (!parsed.success) return { ok: false, error: "Choose a matter and calendar provider first." }
