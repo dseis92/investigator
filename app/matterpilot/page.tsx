@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 
-import { MatterPilotDashboard, type Appointment, type DashboardCommunication, type DashboardContact, type DashboardDeadline, type DashboardMember, type DashboardPortalDocumentRequest, type DashboardTask } from "@/components/matterpilot/dashboard"
+import { MatterPilotDashboard, type Appointment, type DashboardCommunication, type DashboardContact, type DashboardDeadline, type DashboardMember, type DashboardPortalDocumentRequest, type DashboardTask, type DashboardView } from "@/components/matterpilot/dashboard"
 import { getDocumentTemplate } from "@/lib/matterpilot/documents"
 import { getWorkflow } from "@/lib/matterpilot/workflows"
 import { createClient } from "@/lib/supabase/server"
@@ -10,7 +10,12 @@ export const metadata: Metadata = {
   description: "Matter-aware scheduling and legal operations workspace.",
 }
 
-export default async function MatterPilotPage() {
+export default async function MatterPilotPage({ searchParams }: { searchParams?: Promise<{ view?: string | string[] }> }) {
+  const params = searchParams ? await searchParams : {}
+  const requestedView = Array.isArray(params.view) ? params.view[0] : params.view
+  const view = ["overview", "calendar", "tasks", "communications", "deadlines", "contacts", "portal"].includes(requestedView ?? "")
+    ? requestedView as DashboardView
+    : "overview"
   const supabase = await createClient()
   const { data: matters } = await supabase
     .from("matters")
@@ -304,5 +309,5 @@ export default async function MatterPilotPage() {
     }
   })
 
-  return <MatterPilotDashboard matters={matterRows} initialAppointments={[...initialAppointments, ...noteAppointments]} initialCommunications={initialCommunications} initialDeadlines={initialDeadlines} initialContacts={initialContacts} initialTasks={initialTasks} initialTaskMembers={initialTaskMembers} initialAvailabilityRules={(availabilityRules ?? []).map((rule) => ({ id: rule.id, matterId: rule.matter_id, weekday: rule.weekday, startTime: rule.start_time.slice(0, 5), endTime: rule.end_time.slice(0, 5), timezone: rule.timezone, label: rule.label }))} initialBlackouts={(calendarBlackouts ?? []).map((blackout) => ({ id: blackout.id, matterId: blackout.matter_id, startsAt: blackout.starts_at, endsAt: blackout.ends_at, reason: blackout.reason }))} initialPortalMessages={(portalMessages ?? []).map((message) => ({ id: message.id, matterId: message.matter_id, matter: matterNames.get(message.matter_id) ?? "Matter", senderRole: message.sender_role as "client" | "firm", senderEmail: message.sender_email, body: message.body, createdAt: message.created_at }))} initialPortalDocumentRequests={(portalDocumentRequests ?? []).map((request): DashboardPortalDocumentRequest => ({ id: request.id, matterId: request.matter_id, matter: matterNames.get(request.matter_id) ?? "Matter", appointmentId: request.appointment_id, title: request.title, description: request.description, status: request.status as DashboardPortalDocumentRequest["status"], fileName: request.file_name, mimeType: request.mime_type, sizeBytes: request.size_bytes, uploadedAt: request.uploaded_at, reviewerNote: request.reviewer_note, createdAt: request.created_at }))} userName="Maya" />
+  return <MatterPilotDashboard view={view} matters={matterRows} initialAppointments={[...initialAppointments, ...noteAppointments]} initialCommunications={initialCommunications} initialDeadlines={initialDeadlines} initialContacts={initialContacts} initialTasks={initialTasks} initialTaskMembers={initialTaskMembers} initialAvailabilityRules={(availabilityRules ?? []).map((rule) => ({ id: rule.id, matterId: rule.matter_id, weekday: rule.weekday, startTime: rule.start_time.slice(0, 5), endTime: rule.end_time.slice(0, 5), timezone: rule.timezone, label: rule.label }))} initialBlackouts={(calendarBlackouts ?? []).map((blackout) => ({ id: blackout.id, matterId: blackout.matter_id, startsAt: blackout.starts_at, endsAt: blackout.ends_at, reason: blackout.reason }))} initialPortalMessages={(portalMessages ?? []).map((message) => ({ id: message.id, matterId: message.matter_id, matter: matterNames.get(message.matter_id) ?? "Matter", senderRole: message.sender_role as "client" | "firm", senderEmail: message.sender_email, body: message.body, createdAt: message.created_at }))} initialPortalDocumentRequests={(portalDocumentRequests ?? []).map((request): DashboardPortalDocumentRequest => ({ id: request.id, matterId: request.matter_id, matter: matterNames.get(request.matter_id) ?? "Matter", appointmentId: request.appointment_id, title: request.title, description: request.description, status: request.status as DashboardPortalDocumentRequest["status"], fileName: request.file_name, mimeType: request.mime_type, sizeBytes: request.size_bytes, uploadedAt: request.uploaded_at, reviewerNote: request.reviewer_note, createdAt: request.created_at }))} userName="Maya" />
 }
