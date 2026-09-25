@@ -63,8 +63,8 @@ export function AppointmentComposer({ matters, onClose, initialSlot }: { matters
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-end bg-[#15212c]/30 backdrop-blur-[2px] sm:p-4">
-      <div className="flex h-full w-full max-w-md flex-col bg-[#fbfaf7] shadow-2xl sm:h-auto sm:max-h-[calc(100vh-2rem)] sm:rounded-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#15212c]/30 p-4 backdrop-blur-[2px]">
+      <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-[#fbfaf7] shadow-2xl">
         <div className="flex items-center justify-between border-b border-[#e8e3da] px-5 py-4">
           <div><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#b65f3a]">{isQuickNote ? "Calendar note" : "New appointment"}</p><h2 className="mt-1 font-serif text-xl font-semibold text-[#23313d]">{isQuickNote ? "Capture it while it’s fresh" : "Put the matter in motion"}</h2></div>
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close"><X /></Button>
