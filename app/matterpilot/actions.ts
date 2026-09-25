@@ -1387,7 +1387,7 @@ export async function reviewIntakeRequestAction(input: z.input<typeof intakeRevi
 const bookingSchema = z.object({
   slug: z.string().trim().min(1).max(120),
   appointmentTypeName: z.string().trim().min(2).max(120),
-  requestedStart: z.string().datetime(),
+  requestedStart: z.string().datetime({ offset: true }),
   fullName: z.string().trim().min(2).max(160),
   email: z.string().trim().email(),
   summary: z.string().trim().max(2000).optional(),
