@@ -34,13 +34,17 @@ for (const check of checks) {
       headers: { "User-Agent": "matterpilot-production-smoke/1.0" },
     })
 
-    if (check.expected.includes(response.status)) {
-      console.log(`PASS ${check.name} (${response.status})`)
+    const requestId = response.headers.get("x-request-id")
+
+    if (check.expected.includes(response.status) && requestId) {
+      console.log(`PASS ${check.name} (${response.status}, request ${requestId})`)
       continue
     }
 
     failures += 1
-    console.error(`FAIL ${check.name}: received ${response.status}, expected ${check.expected.join(" or ")}`)
+    const statusMessage = `received ${response.status}, expected ${check.expected.join(" or ")}`
+    const requestMessage = requestId ? "request ID present" : "missing x-request-id"
+    console.error(`FAIL ${check.name}: ${statusMessage}; ${requestMessage}`)
   } catch (error) {
     failures += 1
     const message = error instanceof Error ? error.message : "request failed"

@@ -55,7 +55,7 @@ This phase is the gate for every later integration. It makes the deployed applic
 - [x] Keep public booking and client packet routes reachable without staff login.
 - [ ] Decide whether Vercel Deployment Protection should be disabled for the public production domain while keeping preview environments protected.
 - [ ] Set the production domain, canonical URL, Supabase Site URL, and Supabase auth redirect allowlist.
-- [ ] Add structured request IDs and server-side request logging with sensitive values redacted.
+- [x] Add structured request IDs and server-side request logging with sensitive values redacted.
 - [ ] Add error monitoring with environment, route, user-safe context, and release/version metadata.
 - [x] Add deployment smoke checks for health, login, matter access, booking, appointment creation, reports, portal access, and expired-link behavior.
 - [x] Document rollback, migration recovery, provider outage, email outage, and compromised-secret runbooks.

@@ -1,13 +1,26 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { getPublicEnv } from '@/lib/env'
+import { getRequestId, logHttpRequest } from '@/lib/observability'
 
 export async function updateSession(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({
-    request,
-  })
+  const requestId = getRequestId(request.headers.get('x-request-id'))
+  const startedAt = performance.now()
+  const complete = (response: NextResponse) => {
+    response.headers.set('x-request-id', requestId)
+    logHttpRequest({
+      requestId,
+      method: request.method,
+      pathname: request.nextUrl.pathname,
+      status: response.status,
+      durationMs: performance.now() - startedAt,
+    })
+    return response
+  }
+  let supabaseResponse = NextResponse.next({ request })
+  supabaseResponse.headers.set('x-request-id', requestId)
   if (request.nextUrl.pathname === '/api/health' || request.nextUrl.pathname.startsWith('/api/matterpilot/cron/')) {
-    return supabaseResponse
+    return complete(supabaseResponse)
   }
   const env = getPublicEnv()
 
@@ -26,6 +39,7 @@ export async function updateSession(request: NextRequest) {
           supabaseResponse = NextResponse.next({
             request,
           })
+          supabaseResponse.headers.set('x-request-id', requestId)
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
           )
@@ -57,7 +71,7 @@ export async function updateSession(request: NextRequest) {
     // no user, potentially respond by redirecting the user to the login page
     const url = request.nextUrl.clone()
     url.pathname = '/auth/login'
-    return NextResponse.redirect(url)
+    return complete(NextResponse.redirect(url))
   }
 
   // IMPORTANT: You *must* return the supabaseResponse object as it is.
@@ -73,5 +87,5 @@ export async function updateSession(request: NextRequest) {
   // If this is not done, you may be causing the browser and server to go out
   // of sync and terminate the user's session prematurely!
 
-  return supabaseResponse
+  return complete(supabaseResponse)
 }
