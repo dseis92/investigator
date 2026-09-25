@@ -57,8 +57,8 @@ This phase is the gate for every later integration. It makes the deployed applic
 - [ ] Set the production domain, canonical URL, Supabase Site URL, and Supabase auth redirect allowlist.
 - [ ] Add structured request IDs and server-side request logging with sensitive values redacted.
 - [ ] Add error monitoring with environment, route, user-safe context, and release/version metadata.
-- [ ] Add deployment smoke checks for health, login, matter access, booking, appointment creation, reports, portal access, and expired-link behavior.
-- [ ] Document rollback, migration recovery, provider outage, email outage, and compromised-secret runbooks.
+- [x] Add deployment smoke checks for health, login, matter access, booking, appointment creation, reports, portal access, and expired-link behavior.
+- [x] Document rollback, migration recovery, provider outage, email outage, and compromised-secret runbooks.
 - [ ] Add backup/restore verification for database records, storage metadata, and generated documents.
 
 ### Acceptance gate
