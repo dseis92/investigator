@@ -7,13 +7,14 @@ import { createAppointmentAction, createCalendarNoteAction } from "@/app/matterp
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { getWorkflow, getWorkflowDurationMinutes, WORKFLOW_OPTIONS } from "@/lib/matterpilot/workflows"
+import type { CustomWorkflow } from "@/lib/matterpilot/customizations"
 import { cn } from "@/lib/utils"
 
 type Matter = { id: string; name: string; matter_number: string; case_mode: string; status: string }
 type AppointmentSlot = { date: string; time: string }
 const NEW_CLIENT_OPTION = "__new_client__"
 
-export function AppointmentComposer({ matters, onClose, initialSlot }: { matters: Matter[]; onClose: () => void; initialSlot?: AppointmentSlot }) {
+export function AppointmentComposer({ matters, onClose, initialSlot, customWorkflows = [] }: { matters: Matter[]; onClose: () => void; initialSlot?: AppointmentSlot; customWorkflows?: CustomWorkflow[] }) {
   const [step, setStep] = useState<"type" | "details" | "done">(initialSlot ? "details" : "type")
   const [selectedKey, setSelectedKey] = useState(initialSlot ? "quick_note" : "initial_consultation")
   const initialWorkflow = getWorkflow(initialSlot ? "quick_note" : "initial_consultation")
@@ -31,12 +32,18 @@ export function AppointmentComposer({ matters, onClose, initialSlot }: { matters
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
 
-  const workflow = getWorkflow(selectedKey)
+  const selectedCustomWorkflow = customWorkflows.find((item) => `custom:${item.id}` === selectedKey)
+  const workflow = selectedCustomWorkflow
+    ? { key: selectedKey, label: selectedCustomWorkflow.label, duration: `${selectedCustomWorkflow.durationMinutes} min`, tag: selectedCustomWorkflow.tag, defaultTitle: selectedCustomWorkflow.defaultTitle, defaultLocation: selectedCustomWorkflow.defaultLocation, tasks: selectedCustomWorkflow.tasks, documents: selectedCustomWorkflow.documents }
+    : getWorkflow(selectedKey)
   const isQuickNote = selectedKey === "quick_note"
   const isNewClientIntake = selectedKey === "initial_consultation" && matterId === NEW_CLIENT_OPTION
 
   function selectWorkflow(key: string) {
-    const next = getWorkflow(key)
+    const custom = customWorkflows.find((item) => `custom:${item.id}` === key)
+    const next = custom
+      ? { key, label: custom.label, duration: `${custom.durationMinutes} min`, tag: custom.tag, defaultTitle: custom.defaultTitle, defaultLocation: custom.defaultLocation, tasks: custom.tasks, documents: custom.documents }
+      : getWorkflow(key)
     setSelectedKey(next.key)
     setTitle(next.defaultTitle)
     setLocation(next.defaultLocation)
@@ -50,10 +57,11 @@ export function AppointmentComposer({ matters, onClose, initialSlot }: { matters
     setSaving(true)
     setError("")
     const startsAt = new Date(`${date}T${time}:00`).toISOString()
-    const endsAt = new Date(new Date(startsAt).getTime() + getWorkflowDurationMinutes(workflow.key) * 60 * 1000).toISOString()
+    const durationMinutes = selectedCustomWorkflow?.durationMinutes ?? getWorkflowDurationMinutes(workflow.key)
+    const endsAt = new Date(new Date(startsAt).getTime() + durationMinutes * 60 * 1000).toISOString()
     const result = isQuickNote
       ? await createCalendarNoteAction({ title, note: notes, startsAt, endsAt, matterId })
-      : await createAppointmentAction({ matterId: isNewClientIntake ? "" : matterId, title, typeName: workflow.label, workflowKey: workflow.key, startsAt, endsAt, location, notes, clientName, clientEmail, newClientCaseMode, recurrence: repeat === "none" ? undefined : { frequency: repeat, interval: 1, count: Number(repeatCount) } })
+      : await createAppointmentAction({ matterId: isNewClientIntake ? "" : matterId, title, typeName: workflow.label, workflowKey: workflow.key, workflowDefinition: selectedCustomWorkflow ? { label: selectedCustomWorkflow.label, durationMinutes: selectedCustomWorkflow.durationMinutes, defaultLocation: selectedCustomWorkflow.defaultLocation, tasks: selectedCustomWorkflow.tasks, documents: selectedCustomWorkflow.documents } : undefined, startsAt, endsAt, location, notes, clientName, clientEmail, newClientCaseMode, recurrence: repeat === "none" ? undefined : { frequency: repeat, interval: 1, count: Number(repeatCount) } })
     setSaving(false)
     if (!result.ok) {
       setError(result.error)
@@ -70,8 +78,8 @@ export function AppointmentComposer({ matters, onClose, initialSlot }: { matters
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close"><X /></Button>
         </div>
 
-        {step === "type" ? <div className="flex-1 overflow-auto p-5"><p className="mb-4 text-sm text-[#737872]">Choose a repeatable workflow. MatterPilot will create the preparation checklist, document requests, participants, and reminders around it.</p><div className="space-y-2">{WORKFLOW_OPTIONS.map((item) => <button key={item.key} type="button" onClick={() => selectWorkflow(item.key)} className={cn("flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors", selectedKey === item.key ? "border-[#b65f3a] bg-[#fff5ef] ring-1 ring-[#b65f3a]/20" : "border-[#e2ddd4] bg-white hover:border-[#b7b1a7]")}><span><span className="block text-sm font-semibold text-[#23313d]">{item.label}</span><span className="mt-0.5 block text-xs text-[#868a85]">{item.tag}</span></span><span className="text-xs font-medium text-[#868a85]">{item.duration}</span></button>)}</div><Button className="mt-6 w-full bg-[#23313d] hover:bg-[#18242e]" onClick={() => setStep("details")}>Continue <ArrowUpRight /></Button></div> : step === "details" ? <div className="flex-1 overflow-auto p-5">
-          <label className="mb-5 block"><span className="mb-1.5 block text-xs font-semibold text-[#5e655f]">Workflow</span><select value={selectedKey} onChange={(event) => selectWorkflow(event.target.value)} className="h-11 w-full rounded-lg border border-[#ddd8d0] bg-white px-3 text-sm font-semibold text-[#23313d] outline-none focus:border-[#b65f3a]"><optgroup label="Legal workflows">{WORKFLOW_OPTIONS.filter((item) => item.key !== "quick_note").map((item) => <option key={item.key} value={item.key}>{item.label} · {item.duration}</option>)}</optgroup><optgroup label="Calendar utility"><option value="quick_note">Quick calendar note · No matter required</option></optgroup></select></label>
+        {step === "type" ? <div className="flex-1 overflow-auto p-5"><p className="mb-4 text-sm text-[#737872]">Choose a repeatable workflow. MatterPilot will create the preparation checklist, document requests, participants, and reminders around it.</p><div className="space-y-2">{WORKFLOW_OPTIONS.map((item) => <button key={item.key} type="button" onClick={() => selectWorkflow(item.key)} className={cn("flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors", selectedKey === item.key ? "border-[#b65f3a] bg-[#fff5ef] ring-1 ring-[#b65f3a]/20" : "border-[#e2ddd4] bg-white hover:border-[#b7b1a7]")}><span><span className="block text-sm font-semibold text-[#23313d]">{item.label}</span><span className="mt-0.5 block text-xs text-[#868a85]">{item.tag}</span></span><span className="text-xs font-medium text-[#868a85]">{item.duration}</span></button>)}{customWorkflows.filter((item) => item.active).map((item) => <button key={item.id} type="button" onClick={() => selectWorkflow(`custom:${item.id}`)} className={cn("flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors", selectedKey === `custom:${item.id}` ? "border-[#b65f3a] bg-[#fff5ef] ring-1 ring-[#b65f3a]/20" : "border-[#e2ddd4] bg-white hover:border-[#b7b1a7]")}><span><span className="block text-sm font-semibold text-[#23313d]">{item.label}</span><span className="mt-0.5 block text-xs text-[#868a85]">{item.tag} · Your firm workflow</span></span><span className="text-xs font-medium text-[#868a85]">{item.durationMinutes} min</span></button>)}</div><Button className="mt-6 w-full bg-[#23313d] hover:bg-[#18242e]" onClick={() => setStep("details")}>Continue <ArrowUpRight /></Button></div> : step === "details" ? <div className="flex-1 overflow-auto p-5">
+          <label className="mb-5 block"><span className="mb-1.5 block text-xs font-semibold text-[#5e655f]">Workflow</span><select value={selectedKey} onChange={(event) => selectWorkflow(event.target.value)} className="h-11 w-full rounded-lg border border-[#ddd8d0] bg-white px-3 text-sm font-semibold text-[#23313d] outline-none focus:border-[#b65f3a]"><optgroup label="Legal workflows">{WORKFLOW_OPTIONS.filter((item) => item.key !== "quick_note").map((item) => <option key={item.key} value={item.key}>{item.label} · {item.duration}</option>)}</optgroup>{customWorkflows.some((item) => item.active) ? <optgroup label="Your firm workflows">{customWorkflows.filter((item) => item.active).map((item) => <option key={item.id} value={`custom:${item.id}`}>{item.label} · {item.durationMinutes} min</option>)}</optgroup> : null}<optgroup label="Calendar utility"><option value="quick_note">Quick calendar note · No matter required</option></optgroup></select></label>
           <div className="mb-5 rounded-xl bg-[#f1eee8] p-3"><p className="text-xs font-bold uppercase tracking-[0.14em] text-[#8b8d88]">Workflow includes</p><p className="mt-1 text-sm font-semibold text-[#23313d]">{workflow.tasks.length ? `${workflow.tasks.length} prep tasks · ${workflow.documents.length} document requests` : "A private note at this date and time"}</p>{workflow.tasks.length ? <div className="mt-2 flex flex-wrap gap-1.5">{workflow.tasks.slice(0, 3).map((task) => <span key={task} className="rounded-full bg-white px-2 py-1 text-[10px] text-[#727b75]">{task}</span>)}</div> : null}</div>
           <div className="space-y-4">
             <label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#5e655f]">{isQuickNote ? "Note title" : "Appointment title"}</span><Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder={workflow.defaultTitle} /></label>

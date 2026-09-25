@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 
 import { MatterPilotDashboard, type Appointment, type DashboardCommunication, type DashboardContact, type DashboardDeadline, type DashboardMember, type DashboardPortalDocumentRequest, type DashboardTask, type DashboardView } from "@/components/matterpilot/dashboard"
 import { isTransactionalEmailConfigured } from "@/lib/email/resend"
+import { parseCustomWorkflows } from "@/lib/matterpilot/customizations"
 import { getDocumentTemplate } from "@/lib/matterpilot/documents"
 import { getWorkflow } from "@/lib/matterpilot/workflows"
 import { createClient } from "@/lib/supabase/server"
@@ -23,6 +24,11 @@ export default async function MatterPilotPage({ searchParams }: { searchParams?:
     .select("id, name, matter_number, case_mode, status")
     .order("created_at", { ascending: false })
     .limit(8)
+  const { data: userData } = await supabase.auth.getUser()
+  const { data: preferenceRow } = userData.user
+    ? await supabase.from("user_preferences").select("preferences").eq("user_id", userData.user.id).maybeSingle()
+    : { data: null }
+  const customWorkflows = parseCustomWorkflows(preferenceRow?.preferences && typeof preferenceRow.preferences === "object" && !Array.isArray(preferenceRow.preferences) ? preferenceRow.preferences.customWorkflows : undefined)
 
   const matterRows = matters ?? []
   const matterIds = matterRows.map((matter) => matter.id)
@@ -316,5 +322,5 @@ export default async function MatterPilotPage({ searchParams }: { searchParams?:
     }
   })
 
-  return <MatterPilotDashboard view={view} matters={matterRows} initialAppointments={[...initialAppointments, ...noteAppointments]} initialCommunications={initialCommunications} emailDeliveryConfigured={isTransactionalEmailConfigured()} initialDeadlines={initialDeadlines} initialContacts={initialContacts} initialTasks={initialTasks} initialTaskMembers={initialTaskMembers} initialAvailabilityRules={(availabilityRules ?? []).map((rule) => ({ id: rule.id, matterId: rule.matter_id, weekday: rule.weekday, startTime: rule.start_time.slice(0, 5), endTime: rule.end_time.slice(0, 5), timezone: rule.timezone, label: rule.label }))} initialBlackouts={(calendarBlackouts ?? []).map((blackout) => ({ id: blackout.id, matterId: blackout.matter_id, startsAt: blackout.starts_at, endsAt: blackout.ends_at, reason: blackout.reason }))} initialPortalMessages={(portalMessages ?? []).map((message) => ({ id: message.id, matterId: message.matter_id, matter: matterNames.get(message.matter_id) ?? "Matter", senderRole: message.sender_role as "client" | "firm", senderEmail: message.sender_email, body: message.body, createdAt: message.created_at }))} initialPortalDocumentRequests={(portalDocumentRequests ?? []).map((request): DashboardPortalDocumentRequest => ({ id: request.id, matterId: request.matter_id, matter: matterNames.get(request.matter_id) ?? "Matter", appointmentId: request.appointment_id, title: request.title, description: request.description, status: request.status as DashboardPortalDocumentRequest["status"], fileName: request.file_name, mimeType: request.mime_type, sizeBytes: request.size_bytes, uploadedAt: request.uploaded_at, reviewerNote: request.reviewer_note, createdAt: request.created_at }))} userName="Maya" />
+  return <MatterPilotDashboard view={view} matters={matterRows} customWorkflows={customWorkflows} initialAppointments={[...initialAppointments, ...noteAppointments]} initialCommunications={initialCommunications} emailDeliveryConfigured={isTransactionalEmailConfigured()} initialDeadlines={initialDeadlines} initialContacts={initialContacts} initialTasks={initialTasks} initialTaskMembers={initialTaskMembers} initialAvailabilityRules={(availabilityRules ?? []).map((rule) => ({ id: rule.id, matterId: rule.matter_id, weekday: rule.weekday, startTime: rule.start_time.slice(0, 5), endTime: rule.end_time.slice(0, 5), timezone: rule.timezone, label: rule.label }))} initialBlackouts={(calendarBlackouts ?? []).map((blackout) => ({ id: blackout.id, matterId: blackout.matter_id, startsAt: blackout.starts_at, endsAt: blackout.ends_at, reason: blackout.reason }))} initialPortalMessages={(portalMessages ?? []).map((message) => ({ id: message.id, matterId: message.matter_id, matter: matterNames.get(message.matter_id) ?? "Matter", senderRole: message.sender_role as "client" | "firm", senderEmail: message.sender_email, body: message.body, createdAt: message.created_at }))} initialPortalDocumentRequests={(portalDocumentRequests ?? []).map((request): DashboardPortalDocumentRequest => ({ id: request.id, matterId: request.matter_id, matter: matterNames.get(request.matter_id) ?? "Matter", appointmentId: request.appointment_id, title: request.title, description: request.description, status: request.status as DashboardPortalDocumentRequest["status"], fileName: request.file_name, mimeType: request.mime_type, sizeBytes: request.size_bytes, uploadedAt: request.uploaded_at, reviewerNote: request.reviewer_note, createdAt: request.created_at }))} userName="Maya" />
 }

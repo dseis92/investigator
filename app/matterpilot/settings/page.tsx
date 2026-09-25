@@ -16,7 +16,7 @@ export default async function MatterPilotSettingsPage() {
 
   const { data: preferenceRow } = await supabase.from("user_preferences").select("preferences").eq("user_id", data.user.id).maybeSingle()
   const initialPreferences = preferenceRow?.preferences && typeof preferenceRow.preferences === "object" && !Array.isArray(preferenceRow.preferences)
-    ? Object.fromEntries(Object.entries(preferenceRow.preferences).filter(([, value]) => typeof value === "string" || typeof value === "boolean")) as Record<string, string | boolean>
+    ? Object.fromEntries(Object.entries(preferenceRow.preferences)) as Record<string, unknown>
     : {}
 
   return <SettingsCenter userEmail={data.user.email ?? ""} initialPreferences={initialPreferences} />

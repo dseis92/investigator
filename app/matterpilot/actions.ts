@@ -13,6 +13,13 @@ const appointmentSchema = z.object({
   title: z.string().trim().min(2).max(160),
   typeName: z.string().trim().min(2).max(120),
   workflowKey: z.string().trim().min(2).max(60),
+  workflowDefinition: z.object({
+    label: z.string().trim().min(2).max(160),
+    durationMinutes: z.number().int().min(5).max(480),
+    defaultLocation: z.string().trim().max(240),
+    tasks: z.array(z.string().trim().min(1).max(180)).max(20),
+    documents: z.array(z.string().trim().min(1).max(180)).max(20),
+  }).optional(),
   startsAt: z.string().datetime(),
   endsAt: z.string().datetime(),
   location: z.string().trim().max(240).optional(),
@@ -69,7 +76,9 @@ export async function createAppointmentAction(input: z.input<typeof appointmentS
   const { data: userData } = await supabase.auth.getUser()
   if (!userData.user) return { ok: false, error: "Please sign in before creating an appointment." }
 
-  const workflow = getWorkflow(parsed.data.workflowKey)
+  const workflow = parsed.data.workflowDefinition
+    ? { key: parsed.data.workflowKey, label: parsed.data.workflowDefinition.label, duration: `${parsed.data.workflowDefinition.durationMinutes} min`, defaultTitle: parsed.data.workflowDefinition.label, defaultLocation: parsed.data.workflowDefinition.defaultLocation, tasks: parsed.data.workflowDefinition.tasks, documents: parsed.data.workflowDefinition.documents }
+    : getWorkflow(parsed.data.workflowKey)
   let matterId = parsed.data.matterId || ""
   if (!matterId) {
     if (workflow.key !== "initial_consultation") return { ok: false, error: "Choose a matter for this workflow, or use Initial consultation for a new client." }

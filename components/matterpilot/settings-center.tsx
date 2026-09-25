@@ -9,22 +9,28 @@ import {
   Check,
   ChevronRight,
   CircleHelp,
+  CopyPlus,
   Clock3,
   ExternalLink,
   FileText,
+  Gavel,
   Globe2,
   KeyRound,
   LayoutDashboard,
   LockKeyhole,
   Mail,
+  Pencil,
+  Plus,
   Palette,
   Search,
   Settings2,
   ShieldCheck,
   Sparkles,
+  Trash2,
   UserRound,
   UsersRound,
   WalletCards,
+  Workflow,
   X,
 } from "lucide-react"
 
@@ -32,6 +38,7 @@ import { Button } from "@/components/ui/button"
 import { BackToDashboard } from "@/components/matterpilot/back-to-dashboard"
 import { saveUserPreferencesAction } from "@/app/matterpilot/settings-actions"
 import { Input } from "@/components/ui/input"
+import { parseCustomWorkflows, type CustomWorkflow } from "@/lib/matterpilot/customizations"
 import { cn } from "@/lib/utils"
 
 type SectionId =
@@ -40,6 +47,7 @@ type SectionId =
   | "team"
   | "appearance"
   | "calendar"
+  | "workflows"
   | "matters"
   | "intake"
   | "documents"
@@ -92,6 +100,7 @@ type SettingsState = {
   mfaRequired: boolean
   sessionTimeout: string
   auditRetention: string
+  customWorkflows: CustomWorkflow[]
 }
 
 const defaultSettings: SettingsState = {
@@ -137,6 +146,7 @@ const defaultSettings: SettingsState = {
   mfaRequired: false,
   sessionTimeout: "8",
   auditRetention: "7",
+  customWorkflows: [],
 }
 
 const categories: { id: SectionId; label: string; description: string; group: string; icon: typeof Settings2 }[] = [
@@ -146,6 +156,7 @@ const categories: { id: SectionId; label: string; description: string; group: st
   { id: "team", label: "Team, roles & permissions", description: "Control who can see and change firm data.", group: "Workspace", icon: UsersRound },
   { id: "matters", label: "Matter defaults", description: "Statuses, numbering, practice areas, and ownership.", group: "Workflow", icon: LayoutDashboard },
   { id: "calendar", label: "Calendar & booking", description: "Availability, reminders, buffers, and booking rules.", group: "Workflow", icon: CalendarDays },
+  { id: "workflows", label: "Workflow studio", description: "Build firm-specific appointment and preparation flows.", group: "Workflow", icon: Workflow },
   { id: "intake", label: "Intake & conflicts", description: "Shape new-client intake and conflict review.", group: "Workflow", icon: ShieldCheck },
   { id: "documents", label: "Documents & templates", description: "Set defaults for letters, packets, and signatures.", group: "Workflow", icon: FileText },
   { id: "communications", label: "Notifications & email", description: "Decide what gets sent, when, and to whom.", group: "Client experience", icon: Bell },
@@ -198,10 +209,98 @@ function StatusPill({ children, tone = "neutral" }: { children: React.ReactNode;
   return <span className={cn("rounded-full px-2.5 py-1 text-[10px] font-bold", tone === "good" ? "bg-emerald-50 text-emerald-700" : tone === "soon" ? "bg-amber-50 text-amber-800" : "bg-[#f1eee8] text-[#737872]")}>{children}</span>
 }
 
-export function SettingsCenter({ userEmail, initialPreferences }: { userEmail: string; initialPreferences: Record<string, string | boolean> }) {
+type WorkflowDraft = {
+  label: string
+  tag: string
+  durationMinutes: string
+  defaultTitle: string
+  defaultLocation: string
+  tasks: string
+  documents: string
+}
+
+const emptyWorkflowDraft: WorkflowDraft = {
+  label: "",
+  tag: "Firm workflow",
+  durationMinutes: "60",
+  defaultTitle: "",
+  defaultLocation: "To be confirmed",
+  tasks: "",
+  documents: "",
+}
+
+function WorkflowStudio({ workflows, onChange }: { workflows: CustomWorkflow[]; onChange: (workflows: CustomWorkflow[]) => void }) {
+  const [draft, setDraft] = useState<WorkflowDraft>(emptyWorkflowDraft)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [draftError, setDraftError] = useState("")
+
+  function edit(workflow: CustomWorkflow) {
+    setEditingId(workflow.id)
+    setDraft({ label: workflow.label, tag: workflow.tag, durationMinutes: String(workflow.durationMinutes), defaultTitle: workflow.defaultTitle, defaultLocation: workflow.defaultLocation, tasks: workflow.tasks.join("\n"), documents: workflow.documents.join("\n") })
+    setDraftError("")
+  }
+
+  function resetDraft() {
+    setEditingId(null)
+    setDraft(emptyWorkflowDraft)
+    setDraftError("")
+  }
+
+  function saveDraft() {
+    const label = draft.label.trim()
+    const durationMinutes = Number(draft.durationMinutes)
+    if (!label || !Number.isInteger(durationMinutes) || durationMinutes < 5 || durationMinutes > 480) {
+      setDraftError("Add a workflow name and a duration between 5 and 480 minutes.")
+      return
+    }
+    const next: CustomWorkflow = {
+      id: editingId ?? `custom-${crypto.randomUUID()}`,
+      label,
+      tag: draft.tag.trim() || "Firm workflow",
+      durationMinutes,
+      defaultTitle: draft.defaultTitle.trim() || label,
+      defaultLocation: draft.defaultLocation.trim() || "To be confirmed",
+      tasks: draft.tasks.split("\n").map((item) => item.trim()).filter(Boolean).slice(0, 20),
+      documents: draft.documents.split("\n").map((item) => item.trim()).filter(Boolean).slice(0, 20),
+      active: editingId ? workflows.find((workflow) => workflow.id === editingId)?.active !== false : true,
+    }
+    onChange(editingId ? workflows.map((workflow) => workflow.id === editingId ? next : workflow) : [...workflows, next])
+    resetDraft()
+  }
+
+  function duplicate(workflow: CustomWorkflow) {
+    onChange([...workflows, { ...workflow, id: `custom-${crypto.randomUUID()}`, label: `${workflow.label} copy`, defaultTitle: `${workflow.defaultTitle} copy` }])
+  }
+
+  return <div className="space-y-6">
+    <div className="rounded-xl border border-[#d8c7bb] bg-[#fffaf6] p-4 text-xs leading-5 text-[#8b6f60]"><strong className="text-[#6f4f3c]">Built-in workflows stay available.</strong> Add your own without changing the premade MatterPilot options. Custom workflows appear in the appointment dropdown and create the tasks and document requests you define.</div>
+    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(280px,0.8fr)]">
+      <div className="rounded-xl border border-[#e8e3da] bg-white p-4 sm:p-5">
+        <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-[0.15em] text-[#8b604c]">Custom appointment workflow</p><h3 className="mt-1 font-serif text-xl font-semibold text-[#23313d]">{editingId ? "Tune this workflow" : "Add a workflow"}</h3><p className="mt-1 text-xs leading-5 text-[#8b8d88]">One line per preparation task or requested document.</p></div>{editingId ? <Button size="sm" variant="ghost" onClick={resetDraft}>Cancel</Button> : null}</div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <Field label="Workflow name" value={draft.label} onChange={(value) => setDraft((current) => ({ ...current, label: value }))} placeholder="Arraignment preparation" />
+          <Field label="Category tag" value={draft.tag} onChange={(value) => setDraft((current) => ({ ...current, tag: value }))} placeholder="Criminal defense" />
+          <label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#59645e]">Duration in minutes</span><input type="number" min="5" max="480" value={draft.durationMinutes} onChange={(event) => setDraft((current) => ({ ...current, durationMinutes: event.target.value }))} className="h-9 w-full rounded-lg border border-[#ded9d0] bg-white px-3 text-sm outline-none focus:border-[#b65f3a]" /></label>
+          <Field label="Default location" value={draft.defaultLocation} onChange={(value) => setDraft((current) => ({ ...current, defaultLocation: value }))} placeholder="Courtroom 4B" />
+          <div className="sm:col-span-2"><Field label="Default appointment title" value={draft.defaultTitle} onChange={(value) => setDraft((current) => ({ ...current, defaultTitle: value }))} placeholder="Arraignment preparation" /></div>
+          <label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#59645e]">Preparation tasks</span><textarea value={draft.tasks} onChange={(event) => setDraft((current) => ({ ...current, tasks: event.target.value }))} className="min-h-28 w-full rounded-lg border border-[#ded9d0] bg-white px-3 py-2 text-sm outline-none focus:border-[#b65f3a]" placeholder="Review charging document\nPrepare client questions\nConfirm courtroom logistics" /></label>
+          <label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#59645e]">Document requests</span><textarea value={draft.documents} onChange={(event) => setDraft((current) => ({ ...current, documents: event.target.value }))} className="min-h-28 w-full rounded-lg border border-[#ded9d0] bg-white px-3 py-2 text-sm outline-none focus:border-[#b65f3a]" placeholder="Charging document\nCourt notice\nPreparation outline" /></label>
+        </div>
+        {draftError ? <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{draftError}</p> : null}
+        <Button onClick={saveDraft} className="mt-4 bg-[#b65f3a] hover:bg-[#9f5030]">{editingId ? "Save workflow" : "Add workflow"} <Plus /></Button>
+      </div>
+      <div className="space-y-2">
+        {workflows.length ? workflows.map((workflow) => <div key={workflow.id} className={cn("rounded-xl border bg-[#fbfaf7] p-4", workflow.active ? "border-[#e2d7cd]" : "border-[#e8e3da] opacity-65")}><div className="flex items-start gap-3"><span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#f4e5db] text-[#a24f31]"><Workflow className="size-4" /></span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-semibold text-[#39443f]">{workflow.label}</p><StatusPill tone={workflow.active ? "good" : "neutral"}>{workflow.active ? "Active" : "Hidden"}</StatusPill></div><p className="mt-1 text-[11px] text-[#8b8d88]">{workflow.tag} · {workflow.durationMinutes} min · {workflow.tasks.length} tasks · {workflow.documents.length} documents</p></div></div><div className="mt-3 flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => edit(workflow)} className="border-[#ded9d0] px-2.5 text-[11px]"><Pencil /> Edit</Button><Button size="sm" variant="outline" onClick={() => duplicate(workflow)} className="border-[#ded9d0] px-2.5 text-[11px]"><CopyPlus /> Duplicate</Button><Button size="sm" variant="ghost" onClick={() => onChange(workflows.map((item) => item.id === workflow.id ? { ...item, active: !item.active } : item))} className="px-2.5 text-[11px] text-[#a24f31]">{workflow.active ? "Hide" : "Show"}</Button><Button size="sm" variant="ghost" onClick={() => onChange(workflows.filter((item) => item.id !== workflow.id))} className="px-2.5 text-[11px] text-rose-700"><Trash2 /> Delete</Button></div></div>) : <div className="rounded-xl border border-dashed border-[#d8d1c6] bg-[#fbfaf7] px-4 py-8 text-center"><Workflow className="mx-auto size-6 text-[#c8b6a8]" /><p className="mt-3 text-sm font-semibold text-[#4d5851]">No custom workflows yet.</p><p className="mt-1 text-xs leading-5 text-[#8b8d88]">Add the first firm-specific workflow on the left.</p></div>}
+      </div>
+    </div>
+    <div className="grid gap-3 sm:grid-cols-2"><Link href="/matterpilot/operations#recurring-work" className="rounded-xl border border-[#e8e3da] bg-white p-4 transition-colors hover:border-[#c08a6d]"><Clock3 className="size-4 text-[#a24f31]" /><p className="mt-3 text-sm font-semibold">Recurring work templates</p><p className="mt-1 text-xs leading-5 text-[#8b8d88]">Create matter-specific repeating work, choose cadence, and materialize it onto appointments.</p><span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-[#a24f31]">Open Operations <ExternalLink className="size-3.5" /></span></Link><Link href="/matterpilot/operations#court-rules" className="rounded-xl border border-[#e8e3da] bg-white p-4 transition-colors hover:border-[#c08a6d]"><Gavel className="size-4 text-[#a24f31]" /><p className="mt-3 text-sm font-semibold">Court-rule recipes</p><p className="mt-1 text-xs leading-5 text-[#8b8d88]">Keep the verified built-ins and add firm-specific jurisdiction rules with human review before saving dates.</p><span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-[#a24f31]">Open Operations <ExternalLink className="size-3.5" /></span></Link></div>
+  </div>
+}
+
+export function SettingsCenter({ userEmail, initialPreferences }: { userEmail: string; initialPreferences: Record<string, unknown> }) {
   const [section, setSection] = useState<SectionId>("profile")
   const [search, setSearch] = useState("")
-  const [settings, setSettings] = useState<SettingsState>({ ...defaultSettings, ...initialPreferences })
+  const [settings, setSettings] = useState<SettingsState>(() => ({ ...defaultSettings, ...initialPreferences, customWorkflows: parseCustomWorkflows(initialPreferences.customWorkflows) } as SettingsState))
   const [saved, setSaved] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
@@ -255,6 +354,8 @@ export function SettingsCenter({ userEmail, initialPreferences }: { userEmail: s
         return <div className="space-y-6"><Card eyebrow="Personal settings" title="Make the command desk yours" description="Choose a visual rhythm that fits how you work without changing the firm’s client-facing brand."><SettingRow label="Theme" description="Paper is the default MatterPilot workspace. Slate and high contrast are useful alternatives."><select value={settings.theme} onChange={(event) => update("theme", event.target.value as SettingsState["theme"])} className="h-9 rounded-lg border border-[#ded9d0] bg-white px-3 text-sm"><option value="paper">Warm paper</option><option value="slate">Slate</option><option value="high-contrast">High contrast</option></select></SettingRow><SettingRow label="Information density" description="Control how much data is visible in tables, lists, and the calendar."><select value={settings.density} onChange={(event) => update("density", event.target.value as SettingsState["density"])} className="h-9 rounded-lg border border-[#ded9d0] bg-white px-3 text-sm"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></SettingRow><SettingRow label="Show readiness counts" description="Keep ready, at-risk, and blocked appointment totals visible on the command desk."><Toggle checked={settings.showReadiness} onChange={(value) => update("showReadiness", value)} label="Show readiness counts" /></SettingRow><SettingRow label="Show navigation counts" description="Show open task, queued communication, deadline, and portal counts in the sidebar."><Toggle checked={settings.showCounts} onChange={(value) => update("showCounts", value)} label="Show navigation counts" /></SettingRow></Card></div>
       case "calendar":
         return <div className="space-y-6"><Card eyebrow="Scheduling defaults" title="Calendar & booking" description="Set the rules that make public booking predictable and keep attorney time protected."><div className="grid gap-4 py-5 sm:grid-cols-3"><SelectField label="Default appointment length" value={settings.defaultDuration} onChange={(value) => update("defaultDuration", value)} options={[{ label: "30 minutes", value: "30" }, { label: "45 minutes", value: "45" }, { label: "60 minutes", value: "60" }, { label: "90 minutes", value: "90" }]} /><SelectField label="Buffer between meetings" value={settings.bufferMinutes} onChange={(value) => update("bufferMinutes", value)} options={[{ label: "No buffer", value: "0" }, { label: "15 minutes", value: "15" }, { label: "30 minutes", value: "30" }]} /><SelectField label="Minimum booking notice" value={settings.minimumNotice} onChange={(value) => update("minimumNotice", value)} options={[{ label: "2 hours", value: "2" }, { label: "24 hours", value: "24" }, { label: "48 hours", value: "48" }, { label: "1 week", value: "168" }]} /></div><SettingRow label="Public booking page" description="Allow prospective clients to request an intake appointment through your booking link."><Toggle checked={settings.publicBooking} onChange={(value) => update("publicBooking", value)} label="Public booking page" /></SettingRow><SettingRow label="24-hour reminder" description="Send the standard reminder before an appointment begins."><Toggle checked={settings.reminder24Hours} onChange={(value) => update("reminder24Hours", value)} label="24-hour reminder" /></SettingRow><SettingRow label="2-hour reminder" description="Add a short-window reminder for appointments that need a final readiness check."><Toggle checked={settings.reminder2Hours} onChange={(value) => update("reminder2Hours", value)} label="2-hour reminder" /></SettingRow></Card><Card eyebrow="Calendar connections" title="External calendars" description="Connect Google Calendar or Microsoft Outlook so firm availability and MatterPilot appointments stay aligned."><div className="grid gap-3 py-5 sm:grid-cols-2"><div className="flex items-center gap-3 rounded-xl border border-[#e8e3da] bg-white p-4"><span className="flex size-10 items-center justify-center rounded-xl bg-[#f1eee8] text-[#a24f31]">G</span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold">Google Calendar</span><span className="mt-1 block text-xs text-[#8b8d88]">Connect calendars and sync busy time.</span></span><StatusPill tone="soon">Manage in Operations</StatusPill></div><div className="flex items-center gap-3 rounded-xl border border-[#e8e3da] bg-white p-4"><span className="flex size-10 items-center justify-center rounded-xl bg-[#e8eef0] text-[#385367]">O</span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold">Outlook Calendar</span><span className="mt-1 block text-xs text-[#8b8d88]">Connect Microsoft 365 availability.</span></span><StatusPill tone="soon">Manage in Operations</StatusPill></div></div><Link href="/matterpilot/operations#calendar" className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#a24f31] hover:underline">Open calendar operations <ExternalLink className="size-3.5" /></Link></Card></div>
+      case "workflows":
+        return <div className="space-y-6"><Card eyebrow="Firm customization" title="Workflow studio" description="Keep MatterPilot’s tested legal workflows, then add the way your firm actually prepares, meets, and follows up."><WorkflowStudio workflows={settings.customWorkflows} onChange={(workflows) => update("customWorkflows", workflows)} /></Card><Card eyebrow="Matter defaults" title="Starter behavior" description="These existing matter defaults continue to shape new workspaces alongside your custom appointment workflows."><div className="grid gap-4 sm:grid-cols-3"><Field label="Matter number format" value={settings.matterNumberFormat} onChange={(value) => update("matterNumberFormat", value)} /><SelectField label="Default status" value={settings.defaultMatterStatus} onChange={(value) => update("defaultMatterStatus", value)} options={[{ label: "Active", value: "Active" }, { label: "Intake", value: "Intake" }, { label: "Pending", value: "Pending" }]} /><Field label="Default jurisdiction" value={settings.defaultJurisdiction} onChange={(value) => update("defaultJurisdiction", value)} /></div></Card></div>
       case "matters":
         return <div className="space-y-6"><Card eyebrow="Matter defaults" title="Create matters your way" description="These defaults reduce repetitive decisions when a new matter is opened."><div className="grid gap-4 py-5 sm:grid-cols-2"><Field label="Matter number format" value={settings.matterNumberFormat} onChange={(value) => update("matterNumberFormat", value)} /><SelectField label="Default matter status" value={settings.defaultMatterStatus} onChange={(value) => update("defaultMatterStatus", value)} options={[{ label: "Active", value: "Active" }, { label: "Intake", value: "Intake" }, { label: "Pending", value: "Pending" }]} /><SelectField label="Default owner" value="me" onChange={() => undefined} options={[{ label: "Me · Maya Chen", value: "me" }, { label: "Ask every time", value: "ask" }]} /><SelectField label="Default case mode" value="investigation" onChange={() => undefined} options={[{ label: "Investigation", value: "investigation" }, { label: "Litigation", value: "litigation" }, { label: "General", value: "general" }]} /></div><SettingRow label="Auto-create readiness workflow" description="Start new intake matters with the standard questionnaire, engagement letter, and conflict review tasks."><Toggle checked={true} onChange={() => undefined} label="Auto-create readiness workflow" /></SettingRow></Card><Card eyebrow="Matter structure" title="Practice areas & custom fields" description="Shape your workspace around the areas of law and intake data your firm actually uses."><div className="grid gap-3 py-5 sm:grid-cols-3"><div className="rounded-xl border border-dashed border-[#d8c7bb] bg-[#fffaf6] p-4"><p className="text-sm font-semibold">Practice areas</p><p className="mt-1 text-xs leading-5 text-[#8b8d88]">Personal injury, criminal defense, family law, immigration, and more.</p></div><div className="rounded-xl border border-dashed border-[#d8c7bb] bg-[#fffaf6] p-4"><p className="text-sm font-semibold">Custom fields</p><p className="mt-1 text-xs leading-5 text-[#8b8d88]">Add firm-specific matter and contact fields.</p></div><div className="rounded-xl border border-dashed border-[#d8c7bb] bg-[#fffaf6] p-4"><p className="text-sm font-semibold">Matter templates</p><p className="mt-1 text-xs leading-5 text-[#8b8d88]">Start each matter with the right tasks, documents, and deadlines.</p></div></div><StatusPill tone="soon">Admin tools planned next</StatusPill></Card></div>
       case "intake":

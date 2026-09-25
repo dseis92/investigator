@@ -437,6 +437,7 @@ export function OperationsCenter({
 
         <section className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
           <Panel
+            id="recurring-work"
             icon={Clock3}
             title="Recurring work"
             eyebrow="Templates + materialization"
@@ -671,6 +672,7 @@ export function OperationsCenter({
 
         <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
           <Panel
+            id="court-rules"
             icon={Gavel}
             title="Court-rule calculations"
             eyebrow="Deadline engine"

@@ -64,6 +64,18 @@ Only appointment details associated with the verified client and preparation doc
 
 A reusable definition of work that may be materialized onto a specific appointment. The template is not itself completed work; each materialization creates an ordinary appointment task that can be assigned, dated, blocked, and audited.
 
+## Built-in workflow
+
+A MatterPilot-provided appointment workflow with a fixed legal-operations pattern. Built-in workflows remain available even when a firm adds or hides its own workflow choices.
+
+## Custom workflow template
+
+A user-owned appointment workflow that defines its duration, category, default location, preparation tasks, and document requests. A custom workflow is stored as an account preference and is expanded into ordinary appointment tasks and documents when selected.
+
+## Workflow studio
+
+The settings surface where a user manages custom workflow templates while keeping MatterPilot’s built-in workflows intact. Matter-specific recurring work and court-rule recipes remain operational records managed in Operations.
+
 ## Court-rule calculation
 
 A proposed deadline produced from a saved jurisdiction rule and a recorded trigger date. The calculation preserves the rule, offset, and trigger so a human can verify or correct the result before relying on it.
