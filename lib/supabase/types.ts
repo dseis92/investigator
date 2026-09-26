@@ -41,6 +41,7 @@ type ClientPortalGrantRow = { id: string; matter_id: string; client_email: strin
 type AppointmentCommunicationRow = { id: string; matter_id: string; appointment_id: string; channel: string; direction: string; status: string; recipient: string | null; subject: string | null; body: string; provider: string | null; provider_message_id: string | null; error_message: string | null; sent_at: string | null; attempt_count: number; next_attempt_at: string; last_attempt_at: string | null; provider_response: Json | null; created_by: string; created_at: string; updated_at: string }
 type MatterDeadlineRow = { id: string; matter_id: string; title: string; kind: string; due_at: string; priority: string; status: string; notes: string | null; assigned_to: string | null; court_rule_id: string | null; trigger_at: string | null; calculation_note: string | null; created_by: string; created_at: string; updated_at: string }
 type MatterContactRow = { id: string; matter_id: string; display_name: string; contact_type: string; email: string | null; phone: string | null; notes: string | null; status: string; created_by: string; created_at: string; updated_at: string }
+type MatterOnboardingItemRow = { id: string; matter_id: string; item_type: string; title: string; status: string; is_required: boolean; created_by: string; created_at: string; updated_at: string }
 type EvidenceArtifactRow = { id: string; matter_id: string; evidence_id: string; storage_path: string; file_name: string; mime_type: string; size_bytes: number; sha256_hash: string | null; created_by: string; created_at: string; lifecycle_status: string; replaces_artifact_id: string | null; retention_until: string | null; legal_hold: boolean; released_at: string | null }
 type BookingPageRow = { id: string; matter_id: string; slug: string; firm_name: string; active: boolean; created_by: string; created_at: string }
 type BookingRequestRow = { id: string; matter_id: string; booking_page_id: string; appointment_type_name: string; requested_start: string; full_name: string; email: string; summary: string | null; status: string; created_at: string; reviewed_at: string | null }
@@ -126,6 +127,7 @@ export type Database = {
       appointment_communications: MatterPilotTable<AppointmentCommunicationRow, MatterPilotInsert<AppointmentCommunicationRow>, MatterPilotUpdate<AppointmentCommunicationRow>>
       matter_deadlines: MatterPilotTable<MatterDeadlineRow, MatterPilotInsert<MatterDeadlineRow>, MatterPilotUpdate<MatterDeadlineRow>>
       matter_contacts: MatterPilotTable<MatterContactRow, MatterPilotInsert<MatterContactRow>, MatterPilotUpdate<MatterContactRow>>
+      matter_onboarding_items: MatterPilotTable<MatterOnboardingItemRow, MatterPilotInsert<MatterOnboardingItemRow>, MatterPilotUpdate<MatterOnboardingItemRow>>
       evidence_artifacts: MatterPilotTable<EvidenceArtifactRow, MatterPilotInsert<EvidenceArtifactRow>, MatterPilotUpdate<EvidenceArtifactRow>>
       booking_pages: MatterPilotTable<BookingPageRow, MatterPilotInsert<BookingPageRow>, MatterPilotUpdate<BookingPageRow>>
       booking_requests: MatterPilotTable<BookingRequestRow, MatterPilotInsert<BookingRequestRow>, MatterPilotUpdate<BookingRequestRow>>
@@ -1349,6 +1351,7 @@ export type Database = {
           name: string
           next_deadline_at: string | null
           opposing_theory: string | null
+          practice_area: string | null
           status: string
           updated_at: string
           venue: string | null
@@ -1365,6 +1368,7 @@ export type Database = {
           name: string
           next_deadline_at?: string | null
           opposing_theory?: string | null
+          practice_area?: string | null
           status?: string
           updated_at?: string
           venue?: string | null
@@ -1381,6 +1385,7 @@ export type Database = {
           name?: string
           next_deadline_at?: string | null
           opposing_theory?: string | null
+          practice_area?: string | null
           status?: string
           updated_at?: string
           venue?: string | null

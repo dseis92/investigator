@@ -61,7 +61,7 @@ export function CreateMatterDialog({ matterTemplates = [] }: { matterTemplates?:
         <form action={formAction}>
           <DialogHeader>
             <DialogTitle>Create a matter</DialogTitle>
-            <DialogDescription>Set up a new case workspace. You can fill in more detail later.</DialogDescription>
+            <DialogDescription>Set up a new case workspace. Choose an onboarding kit to create the first questions, tasks, and document requests automatically.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             {activeMatterTemplates.length ? (
@@ -79,6 +79,7 @@ export function CreateMatterDialog({ matterTemplates = [] }: { matterTemplates?:
                 {selectedTemplate ? <p className="text-xs leading-5 text-[#8b8d88]">Prefills the case mode, jurisdiction, and venue below. You can still change any value before creating the matter.</p> : null}
               </div>
             ) : null}
+            <input type="hidden" name="onboarding_template_id" value={selectedTemplate?.id ?? ""} />
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="matter_number">Matter number</Label>

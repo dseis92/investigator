@@ -14,8 +14,13 @@ export type MatterStarterTemplate = {
   id: string
   name: string
   caseMode: "criminal_defense" | "civil_defense"
+  practiceArea: string
+  defaultStatus: "active" | "on_hold"
   jurisdiction: string
   venue: string
+  intakeQuestions: string[]
+  preparationTasks: string[]
+  documentRequests: string[]
   active: boolean
 }
 
@@ -61,8 +66,13 @@ export function parseMatterStarterTemplates(value: unknown): MatterStarterTempla
       id: typeof candidate.id === "string" && candidate.id ? candidate.id : `matter-template-${crypto.randomUUID()}`,
       name,
       caseMode,
+      practiceArea: typeof candidate.practiceArea === "string" ? candidate.practiceArea.trim() : "",
+      defaultStatus: candidate.defaultStatus === "on_hold" ? "on_hold" : "active",
       jurisdiction: typeof candidate.jurisdiction === "string" ? candidate.jurisdiction.trim() : "",
       venue: typeof candidate.venue === "string" ? candidate.venue.trim() : "",
+      intakeQuestions: stringList(candidate.intakeQuestions),
+      preparationTasks: stringList(candidate.preparationTasks),
+      documentRequests: stringList(candidate.documentRequests),
       active: candidate.active !== false,
     } satisfies MatterStarterTemplate]
   }).slice(0, 30)

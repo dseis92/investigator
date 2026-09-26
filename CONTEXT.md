@@ -78,7 +78,11 @@ The settings surface where a user manages custom workflow templates while keepin
 
 ## Matter starter template
 
-A user-owned reusable starting configuration for a new matter. It prefills case mode, jurisdiction, and venue; it does not alter matter-creation security or silently create matter-owned records.
+A user-owned reusable starting configuration for a new matter. It prefills case mode, jurisdiction, and venue and may carry an onboarding kit; it never changes the matter-creation security boundary.
+
+## Matter onboarding kit
+
+The operational extension of a matter starter template. When selected during matter creation, it applies matter defaults and creates the initial intake questions plus a matter-scoped setup queue for preparation tasks and document requests.
 
 ## Court-rule calculation
 

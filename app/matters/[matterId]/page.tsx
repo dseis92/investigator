@@ -7,6 +7,7 @@ import { ArrowUpRight, BookOpen, CheckCircle2, FileSearch, Gavel, ShieldAlert } 
 import { AuditTrail, type AuditTrailEntry } from "@/components/audit-trail"
 import { EvidenceHealthPanel } from "@/components/matters/evidence-health-panel"
 import { MatterHeader } from "@/components/matters/matter-header"
+import { MatterOnboardingPanel } from "@/components/matters/matter-onboarding-panel"
 import { RecommendedActionsList } from "@/components/matters/recommended-actions-list"
 import { StatusBadge } from "@/components/status-badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -45,6 +46,7 @@ export default async function MatterCommandCenterPage({ params }: { params: Prom
     { count: evidenceCount },
     { data: openQuestions },
     { data: auditRows },
+    { data: onboardingItems },
   ] = await Promise.all([
     supabase.from("questions").select("id").eq("matter_id", matterId),
     supabase.from("propositions").select("id, question_id").eq("matter_id", matterId),
@@ -89,6 +91,11 @@ export default async function MatterCommandCenterPage({ params }: { params: Prom
       .eq("matter_id", matterId)
       .order("created_at", { ascending: false })
       .limit(8),
+    supabase
+      .from("matter_onboarding_items")
+      .select("id, item_type, title, status, is_required")
+      .eq("matter_id", matterId)
+      .order("created_at", { ascending: true }),
   ])
 
   const propositionIdsWithEvidence = new Set((evidenceLinks ?? []).map((l) => l.proposition_id))
@@ -121,6 +128,8 @@ export default async function MatterCommandCenterPage({ params }: { params: Prom
   return (
     <div className="space-y-6 pb-16">
       <MatterHeader matter={matter} />
+
+      <MatterOnboardingPanel matterId={matterId} items={(onboardingItems ?? []) as { id: string; item_type: "task" | "document"; title: string; status: "open" | "completed" | "waived"; is_required: boolean }[]} />
 
       <section className="relative overflow-hidden rounded-2xl bg-[#23313d] px-5 py-6 text-white shadow-xl shadow-[#23313d]/10 sm:px-7 sm:py-7">
         <div className="absolute -right-16 -top-24 size-72 rounded-full border border-white/10" />

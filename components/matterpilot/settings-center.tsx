@@ -234,15 +234,25 @@ const emptyWorkflowDraft: WorkflowDraft = {
 type MatterTemplateDraft = {
   name: string
   caseMode: MatterStarterTemplate["caseMode"]
+  practiceArea: string
+  defaultStatus: MatterStarterTemplate["defaultStatus"]
   jurisdiction: string
   venue: string
+  intakeQuestions: string
+  preparationTasks: string
+  documentRequests: string
 }
 
 const emptyMatterTemplateDraft: MatterTemplateDraft = {
   name: "",
   caseMode: "criminal_defense",
+  practiceArea: "",
+  defaultStatus: "active",
   jurisdiction: "",
   venue: "",
+  intakeQuestions: "",
+  preparationTasks: "",
+  documentRequests: "",
 }
 
 function WorkflowStudio({
@@ -303,7 +313,7 @@ function WorkflowStudio({
 
   function editMatterTemplate(template: MatterStarterTemplate) {
     setEditingMatterTemplateId(template.id)
-    setMatterTemplateDraft({ name: template.name, caseMode: template.caseMode, jurisdiction: template.jurisdiction, venue: template.venue })
+    setMatterTemplateDraft({ name: template.name, caseMode: template.caseMode, practiceArea: template.practiceArea, defaultStatus: template.defaultStatus, jurisdiction: template.jurisdiction, venue: template.venue, intakeQuestions: template.intakeQuestions.join("\n"), preparationTasks: template.preparationTasks.join("\n"), documentRequests: template.documentRequests.join("\n") })
     setMatterTemplateError("")
   }
 
@@ -323,8 +333,13 @@ function WorkflowStudio({
       id: editingMatterTemplateId ?? `matter-template-${crypto.randomUUID()}`,
       name,
       caseMode: matterTemplateDraft.caseMode,
+      practiceArea: matterTemplateDraft.practiceArea.trim(),
+      defaultStatus: matterTemplateDraft.defaultStatus,
       jurisdiction: matterTemplateDraft.jurisdiction.trim(),
       venue: matterTemplateDraft.venue.trim(),
+      intakeQuestions: matterTemplateDraft.intakeQuestions.split("\n").map((item) => item.trim()).filter(Boolean).slice(0, 20),
+      preparationTasks: matterTemplateDraft.preparationTasks.split("\n").map((item) => item.trim()).filter(Boolean).slice(0, 20),
+      documentRequests: matterTemplateDraft.documentRequests.split("\n").map((item) => item.trim()).filter(Boolean).slice(0, 20),
       active: editingMatterTemplateId ? matterTemplates.find((template) => template.id === editingMatterTemplateId)?.active !== false : true,
     }
     onMatterTemplatesChange(editingMatterTemplateId ? matterTemplates.map((template) => template.id === editingMatterTemplateId ? next : template) : [...matterTemplates, next])
@@ -357,20 +372,27 @@ function WorkflowStudio({
       </div>
     </div>
     <div className="rounded-xl border border-[#e8e3da] bg-white p-4 sm:p-5">
-      <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-[0.15em] text-[#8b604c]">Matter starter templates</p><h3 className="mt-1 font-serif text-xl font-semibold text-[#23313d]">Start new matters your way</h3><p className="mt-1 max-w-2xl text-xs leading-5 text-[#8b8d88]">Save the case mode, jurisdiction, and venue your team uses most. A template only prefills the new-matter form; it never creates records by itself.</p></div>{editingMatterTemplateId ? <Button size="sm" variant="ghost" onClick={resetMatterTemplateDraft}>Cancel</Button> : null}</div>
+      <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-[0.15em] text-[#8b604c]">Matter onboarding kits</p><h3 className="mt-1 font-serif text-xl font-semibold text-[#23313d]">Start new matters your way</h3><p className="mt-1 max-w-2xl text-xs leading-5 text-[#8b8d88]">Save the defaults and first-run checklist your team uses most. Selecting a kit pre-fills the matter and creates its intake questions, setup tasks, and document requests.</p></div>{editingMatterTemplateId ? <Button size="sm" variant="ghost" onClick={resetMatterTemplateDraft}>Cancel</Button> : null}</div>
       <div className="mt-4 grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(280px,0.8fr)]">
         <div>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Template name" value={matterTemplateDraft.name} onChange={(value) => setMatterTemplateDraft((current) => ({ ...current, name: value }))} placeholder="Illinois criminal defense" />
+            <Field label="Practice area" value={matterTemplateDraft.practiceArea} onChange={(value) => setMatterTemplateDraft((current) => ({ ...current, practiceArea: value }))} placeholder="Criminal defense" />
             <label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#59645e]">Case mode</span><select value={matterTemplateDraft.caseMode} onChange={(event) => setMatterTemplateDraft((current) => ({ ...current, caseMode: event.target.value as MatterTemplateDraft["caseMode"] }))} className="h-9 w-full rounded-lg border border-[#ded9d0] bg-white px-3 text-sm text-[#35433e] outline-none focus:border-[#b65f3a]"><option value="criminal_defense">Criminal defense</option><option value="civil_defense">Civil defense</option></select></label>
+            <label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#59645e]">Starting status</span><select value={matterTemplateDraft.defaultStatus} onChange={(event) => setMatterTemplateDraft((current) => ({ ...current, defaultStatus: event.target.value as MatterTemplateDraft["defaultStatus"] }))} className="h-9 w-full rounded-lg border border-[#ded9d0] bg-white px-3 text-sm text-[#35433e] outline-none focus:border-[#b65f3a]"><option value="active">Active</option><option value="on_hold">On hold</option></select></label>
             <Field label="Jurisdiction" value={matterTemplateDraft.jurisdiction} onChange={(value) => setMatterTemplateDraft((current) => ({ ...current, jurisdiction: value }))} placeholder="Illinois" />
             <Field label="Venue" value={matterTemplateDraft.venue} onChange={(value) => setMatterTemplateDraft((current) => ({ ...current, venue: value }))} placeholder="Cook County Circuit Court" />
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#59645e]">Intake questions</span><textarea value={matterTemplateDraft.intakeQuestions} onChange={(event) => setMatterTemplateDraft((current) => ({ ...current, intakeQuestions: event.target.value }))} className="min-h-32 w-full rounded-lg border border-[#ded9d0] bg-white px-3 py-2 text-sm outline-none focus:border-[#b65f3a]" placeholder="What is the client’s biggest concern?\nWhat deadlines are already known?" /></label>
+            <label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#59645e]">Preparation tasks</span><textarea value={matterTemplateDraft.preparationTasks} onChange={(event) => setMatterTemplateDraft((current) => ({ ...current, preparationTasks: event.target.value }))} className="min-h-32 w-full rounded-lg border border-[#ded9d0] bg-white px-3 py-2 text-sm outline-none focus:border-[#b65f3a]" placeholder="Run conflict check\nConfirm charging document" /></label>
+            <label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#59645e]">Document requests</span><textarea value={matterTemplateDraft.documentRequests} onChange={(event) => setMatterTemplateDraft((current) => ({ ...current, documentRequests: event.target.value }))} className="min-h-32 w-full rounded-lg border border-[#ded9d0] bg-white px-3 py-2 text-sm outline-none focus:border-[#b65f3a]" placeholder="Engagement letter\nClient identification" /></label>
           </div>
           {matterTemplateError ? <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{matterTemplateError}</p> : null}
           <Button onClick={saveMatterTemplate} className="mt-4 bg-[#b65f3a] hover:bg-[#9f5030]">{editingMatterTemplateId ? "Save template" : "Add matter template"} <Plus /></Button>
         </div>
         <div className="space-y-2">
-          {matterTemplates.length ? matterTemplates.map((template) => <div key={template.id} className={cn("rounded-xl border bg-[#fbfaf7] p-4", template.active ? "border-[#e2d7cd]" : "border-[#e8e3da] opacity-65")}><div className="flex items-start gap-3"><span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#e8eef0] text-[#385367]"><BriefcaseBusiness className="size-4" /></span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-semibold text-[#39443f]">{template.name}</p><StatusPill tone={template.active ? "good" : "neutral"}>{template.active ? "Active" : "Hidden"}</StatusPill></div><p className="mt-1 text-[11px] text-[#8b8d88]">{template.caseMode === "criminal_defense" ? "Criminal defense" : "Civil defense"}{template.jurisdiction ? ` · ${template.jurisdiction}` : ""}{template.venue ? ` · ${template.venue}` : ""}</p></div></div><div className="mt-3 flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => editMatterTemplate(template)} className="border-[#ded9d0] px-2.5 text-[11px]"><Pencil /> Edit</Button><Button size="sm" variant="outline" onClick={() => duplicateMatterTemplate(template)} className="border-[#ded9d0] px-2.5 text-[11px]"><CopyPlus /> Duplicate</Button><Button size="sm" variant="ghost" onClick={() => onMatterTemplatesChange(matterTemplates.map((item) => item.id === template.id ? { ...item, active: !item.active } : item))} className="px-2.5 text-[11px] text-[#a24f31]">{template.active ? "Hide" : "Show"}</Button><Button size="sm" variant="ghost" onClick={() => onMatterTemplatesChange(matterTemplates.filter((item) => item.id !== template.id))} className="px-2.5 text-[11px] text-rose-700"><Trash2 /> Delete</Button></div></div>) : <div className="rounded-xl border border-dashed border-[#d8d1c6] bg-[#fbfaf7] px-4 py-8 text-center"><BriefcaseBusiness className="mx-auto size-6 text-[#b7afa3]" /><p className="mt-3 text-sm font-semibold text-[#4d5851]">No matter templates yet.</p><p className="mt-1 text-xs leading-5 text-[#8b8d88]">Add one to speed up the next new matter.</p></div>}
+          {matterTemplates.length ? matterTemplates.map((template) => <div key={template.id} className={cn("rounded-xl border bg-[#fbfaf7] p-4", template.active ? "border-[#e2d7cd]" : "border-[#e8e3da] opacity-65")}><div className="flex items-start gap-3"><span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#e8eef0] text-[#385367]"><BriefcaseBusiness className="size-4" /></span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-semibold text-[#39443f]">{template.name}</p><StatusPill tone={template.active ? "good" : "neutral"}>{template.active ? "Active" : "Hidden"}</StatusPill></div><p className="mt-1 text-[11px] text-[#8b8d88]">{template.caseMode === "criminal_defense" ? "Criminal defense" : "Civil defense"}{template.practiceArea ? ` · ${template.practiceArea}` : ""}{template.jurisdiction ? ` · ${template.jurisdiction}` : ""}</p><p className="mt-1 text-[11px] text-[#a1a39d]">{template.intakeQuestions.length} intake questions · {template.preparationTasks.length} setup tasks · {template.documentRequests.length} document requests</p></div></div><div className="mt-3 flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => editMatterTemplate(template)} className="border-[#ded9d0] px-2.5 text-[11px]"><Pencil /> Edit</Button><Button size="sm" variant="outline" onClick={() => duplicateMatterTemplate(template)} className="border-[#ded9d0] px-2.5 text-[11px]"><CopyPlus /> Duplicate</Button><Button size="sm" variant="ghost" onClick={() => onMatterTemplatesChange(matterTemplates.map((item) => item.id === template.id ? { ...item, active: !item.active } : item))} className="px-2.5 text-[11px] text-[#a24f31]">{template.active ? "Hide" : "Show"}</Button><Button size="sm" variant="ghost" onClick={() => onMatterTemplatesChange(matterTemplates.filter((item) => item.id !== template.id))} className="px-2.5 text-[11px] text-rose-700"><Trash2 /> Delete</Button></div></div>) : <div className="rounded-xl border border-dashed border-[#d8d1c6] bg-[#fbfaf7] px-4 py-8 text-center"><BriefcaseBusiness className="mx-auto size-6 text-[#b7afa3]" /><p className="mt-3 text-sm font-semibold text-[#4d5851]">No onboarding kits yet.</p><p className="mt-1 text-xs leading-5 text-[#8b8d88]">Add one to speed up the next new matter.</p></div>}
         </div>
       </div>
     </div>
