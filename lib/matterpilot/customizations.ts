@@ -10,7 +10,17 @@ export type CustomWorkflow = {
   active: boolean
 }
 
+export type MatterStarterTemplate = {
+  id: string
+  name: string
+  caseMode: "criminal_defense" | "civil_defense"
+  jurisdiction: string
+  venue: string
+  active: boolean
+}
+
 export const EMPTY_CUSTOM_WORKFLOWS: CustomWorkflow[] = []
+export const EMPTY_MATTER_STARTER_TEMPLATES: MatterStarterTemplate[] = []
 
 function stringList(value: unknown) {
   if (!Array.isArray(value)) return []
@@ -37,4 +47,23 @@ export function parseCustomWorkflows(value: unknown): CustomWorkflow[] {
       active: candidate.active !== false,
     } satisfies CustomWorkflow]
   }).slice(0, 40)
+}
+
+export function parseMatterStarterTemplates(value: unknown): MatterStarterTemplate[] {
+  if (!Array.isArray(value)) return EMPTY_MATTER_STARTER_TEMPLATES
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return []
+    const candidate = item as Record<string, unknown>
+    const name = typeof candidate.name === "string" ? candidate.name.trim() : ""
+    const caseMode = candidate.caseMode === "civil_defense" ? "civil_defense" : candidate.caseMode === "criminal_defense" ? "criminal_defense" : null
+    if (!name || !caseMode) return []
+    return [{
+      id: typeof candidate.id === "string" && candidate.id ? candidate.id : `matter-template-${crypto.randomUUID()}`,
+      name,
+      caseMode,
+      jurisdiction: typeof candidate.jurisdiction === "string" ? candidate.jurisdiction.trim() : "",
+      venue: typeof candidate.venue === "string" ? candidate.venue.trim() : "",
+      active: candidate.active !== false,
+    } satisfies MatterStarterTemplate]
+  }).slice(0, 30)
 }

@@ -31,6 +31,7 @@ import { CreateMatterDialog } from "@/components/matters/create-matter-dialog"
 import { BackToDashboard } from "@/components/matterpilot/back-to-dashboard"
 import { SignOutButton } from "@/components/sign-out-button"
 import { formatDate, humanizeEnum } from "@/lib/format"
+import type { MatterStarterTemplate } from "@/lib/matterpilot/customizations"
 import { cn } from "@/lib/utils"
 
 export type IntelligenceMatter = {
@@ -178,7 +179,7 @@ function MatterCard({ matter, index }: { matter: IntelligenceMatter; index: numb
   )
 }
 
-export function IntelligenceDashboard({ matters }: { matters: IntelligenceMatter[] }) {
+export function IntelligenceDashboard({ matters, matterTemplates = [] }: { matters: IntelligenceMatter[]; matterTemplates?: MatterStarterTemplate[] }) {
   const [mobileNav, setMobileNav] = useState(false)
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
@@ -218,7 +219,7 @@ export function IntelligenceDashboard({ matters }: { matters: IntelligenceMatter
                 <span className="sr-only">Search matters</span>
                 <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search matters" className="w-40 bg-transparent outline-none placeholder:text-[#a1a39d]" />
               </label>
-              <CreateMatterDialog />
+              <CreateMatterDialog matterTemplates={matterTemplates} />
             </div>
           </header>
 
@@ -266,7 +267,7 @@ export function IntelligenceDashboard({ matters }: { matters: IntelligenceMatter
 
             <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
               <div className="rounded-2xl border border-[#ded9d0] bg-[#fbfaf7] p-5 shadow-sm sm:p-6"><div className="flex items-start gap-3"><span className="flex size-10 items-center justify-center rounded-xl bg-[#e8eef0] text-[#385367]"><ShieldCheck className="size-5" /></span><div><h2 className="font-serif text-xl font-semibold text-[#23313d]">A quieter command center</h2><p className="mt-1 max-w-xl text-xs leading-5 text-[#737872]">TraceLine separates what a source says, what the team infers, and what still needs proof. The result is a matter record your team can reason from—not just a folder of files.</p></div></div><div className="mt-5 grid gap-3 sm:grid-cols-3"><div className="rounded-xl bg-[#f1eee8] p-3"><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9b765f]">Questions</p><p className="mt-2 text-xs leading-5 text-[#59645e]">Turn uncertainty into an assigned investigative thread.</p></div><div className="rounded-xl bg-[#f1eee8] p-3"><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9b765f]">Evidence</p><p className="mt-2 text-xs leading-5 text-[#59645e]">Keep provenance and limitations visible at the point of use.</p></div><div className="rounded-xl bg-[#f1eee8] p-3"><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9b765f]">Review</p><p className="mt-2 text-xs leading-5 text-[#59645e]">Surface contradictions before they become surprises.</p></div></div></div>
-              <div className="rounded-2xl border border-[#d5c8b9] bg-[#ead9c4] p-5 shadow-sm sm:p-6"><div className="flex items-center gap-2 text-[#6f4f3c]"><Plus className="size-4" /><span className="text-xs font-bold uppercase tracking-[0.16em]">Start a workspace</span></div><h2 className="mt-4 font-serif text-2xl font-semibold leading-tight text-[#3b3029]">Add a matter when the facts are ready to move.</h2><p className="mt-2 text-sm leading-6 text-[#705d50]">Create the private case workspace first. Then add the questions, subjects, evidence, and deadlines that make the record useful.</p><CreateMatterDialog /></div>
+              <div className="rounded-2xl border border-[#d5c8b9] bg-[#ead9c4] p-5 shadow-sm sm:p-6"><div className="flex items-center gap-2 text-[#6f4f3c]"><Plus className="size-4" /><span className="text-xs font-bold uppercase tracking-[0.16em]">Start a workspace</span></div><h2 className="mt-4 font-serif text-2xl font-semibold leading-tight text-[#3b3029]">Add a matter when the facts are ready to move.</h2><p className="mt-2 text-sm leading-6 text-[#705d50]">Create the private case workspace first. Then add the questions, subjects, evidence, and deadlines that make the record useful.</p><CreateMatterDialog matterTemplates={matterTemplates} /></div>
             </section>
           </div>
         </main>

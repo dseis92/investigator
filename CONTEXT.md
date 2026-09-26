@@ -76,6 +76,10 @@ A user-owned appointment workflow that defines its duration, category, default l
 
 The settings surface where a user manages custom workflow templates while keeping MatterPilot’s built-in workflows intact. Matter-specific recurring work and court-rule recipes remain operational records managed in Operations.
 
+## Matter starter template
+
+A user-owned reusable starting configuration for a new matter. It prefills case mode, jurisdiction, and venue; it does not alter matter-creation security or silently create matter-owned records.
+
 ## Court-rule calculation
 
 A proposed deadline produced from a saved jurisdiction rule and a recorded trigger date. The calculation preserves the rule, offset, and trigger so a human can verify or correct the result before relying on it.

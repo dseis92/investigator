@@ -18,10 +18,34 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import type { MatterStarterTemplate } from "@/lib/matterpilot/customizations"
 
-export function CreateMatterDialog() {
+const blankTemplateValue = "__blank_matter_template__"
+
+export function CreateMatterDialog({ matterTemplates = [] }: { matterTemplates?: MatterStarterTemplate[] }) {
   const [open, setOpen] = useState(false)
+  const [templateId, setTemplateId] = useState(blankTemplateValue)
+  const [caseMode, setCaseMode] = useState<MatterStarterTemplate["caseMode"]>("criminal_defense")
+  const [jurisdiction, setJurisdiction] = useState("")
+  const [venue, setVenue] = useState("")
   const [state, formAction, isPending] = useActionState<CreateMatterState, FormData>(createMatter, { error: null })
+  const activeMatterTemplates = matterTemplates.filter((template) => template.active)
+  const selectedTemplate = activeMatterTemplates.find((template) => template.id === templateId)
+
+  function applyTemplate(value: string | null) {
+    const nextValue = value ?? blankTemplateValue
+    setTemplateId(nextValue)
+    const template = activeMatterTemplates.find((candidate) => candidate.id === nextValue)
+    if (!template) {
+      setCaseMode("criminal_defense")
+      setJurisdiction("")
+      setVenue("")
+      return
+    }
+    setCaseMode(template.caseMode)
+    setJurisdiction(template.jurisdiction)
+    setVenue(template.venue)
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -40,6 +64,21 @@ export function CreateMatterDialog() {
             <DialogDescription>Set up a new case workspace. You can fill in more detail later.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
+            {activeMatterTemplates.length ? (
+              <div className="space-y-2">
+                <Label htmlFor="matter_template">Starter template</Label>
+                <Select value={templateId} onValueChange={applyTemplate}>
+                  <SelectTrigger id="matter_template" className="w-full">
+                    <SelectValue placeholder="Start from a blank matter" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={blankTemplateValue}>Start from a blank matter</SelectItem>
+                    {activeMatterTemplates.map((template) => <SelectItem key={template.id} value={template.id}>{template.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                {selectedTemplate ? <p className="text-xs leading-5 text-[#8b8d88]">Prefills the case mode, jurisdiction, and venue below. You can still change any value before creating the matter.</p> : null}
+              </div>
+            ) : null}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="matter_number">Matter number</Label>
@@ -47,7 +86,7 @@ export function CreateMatterDialog() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="case_mode">Case mode</Label>
-                <Select name="case_mode" defaultValue="criminal_defense">
+                <Select name="case_mode" value={caseMode} onValueChange={(value) => setCaseMode(value as MatterStarterTemplate["caseMode"])}>
                   <SelectTrigger id="case_mode" className="w-full">
                     <SelectValue />
                   </SelectTrigger>
@@ -65,11 +104,11 @@ export function CreateMatterDialog() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="jurisdiction">Jurisdiction</Label>
-                <Input id="jurisdiction" name="jurisdiction" placeholder="County of Alameda" />
+                <Input id="jurisdiction" name="jurisdiction" value={jurisdiction} onChange={(event) => setJurisdiction(event.target.value)} placeholder="County of Alameda" />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="venue">Venue</Label>
-                <Input id="venue" name="venue" placeholder="Superior Court, Dept. 12" />
+                <Input id="venue" name="venue" value={venue} onChange={(event) => setVenue(event.target.value)} placeholder="Superior Court, Dept. 12" />
               </div>
             </div>
             {state.error ? (
