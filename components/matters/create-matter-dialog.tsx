@@ -102,6 +102,15 @@ export function CreateMatterDialog({ matterTemplates = [] }: { matterTemplates?:
               <Label htmlFor="name">Matter name</Label>
               <Input id="name" name="name" placeholder="State v. Jane Doe" required />
             </div>
+            <div className="rounded-xl border border-[#eadbd0] bg-[#fffaf6] p-4">
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#8b604c]">Client identity <span className="font-normal normal-case tracking-normal text-[#a1a39d]">optional</span></p>
+              <p className="mt-1 text-xs leading-5 text-[#8b8d88]">Add the prospective client now to create the contact and start the conflict review automatically.</p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                <div className="space-y-2"><Label htmlFor="client_name">Client name</Label><Input id="client_name" name="client_name" placeholder="Jane Doe" /></div>
+                <div className="space-y-2"><Label htmlFor="client_email">Email</Label><Input id="client_email" name="client_email" type="email" placeholder="jane@example.com" /></div>
+                <div className="space-y-2"><Label htmlFor="client_phone">Phone</Label><Input id="client_phone" name="client_phone" placeholder="(312) 555-0144" /></div>
+              </div>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="jurisdiction">Jurisdiction</Label>

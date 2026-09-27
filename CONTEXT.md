@@ -84,6 +84,10 @@ A user-owned reusable starting configuration for a new matter. It prefills case 
 
 The operational extension of a matter starter template. When selected during matter creation, it applies matter defaults and creates the initial intake questions plus a matter-scoped setup queue for preparation tasks and document requests.
 
+## Client intake & conflict posture
+
+The matter-level client identity and conflict-review state. A client can be captured during matter creation, linked to a matter-scoped contact, compared against accessible contacts and subjects, and then marked clear, possible conflict, or waived by the responsible team.
+
 ## Court-rule calculation
 
 A proposed deadline produced from a saved jurisdiction rule and a recorded trigger date. The calculation preserves the rule, offset, and trigger so a human can verify or correct the result before relying on it.

@@ -6,6 +6,7 @@ import { ArrowUpRight, BookOpen, CheckCircle2, FileSearch, Gavel, ShieldAlert } 
 
 import { AuditTrail, type AuditTrailEntry } from "@/components/audit-trail"
 import { EvidenceHealthPanel } from "@/components/matters/evidence-health-panel"
+import { ClientIntakePanel } from "@/components/matters/client-intake-panel"
 import { MatterHeader } from "@/components/matters/matter-header"
 import { MatterOnboardingPanel } from "@/components/matters/matter-onboarding-panel"
 import { RecommendedActionsList } from "@/components/matters/recommended-actions-list"
@@ -128,6 +129,16 @@ export default async function MatterCommandCenterPage({ params }: { params: Prom
   return (
     <div className="space-y-6 pb-16">
       <MatterHeader matter={matter} />
+
+      <ClientIntakePanel
+        matterId={matterId}
+        clientName={matter.client_name}
+        clientEmail={matter.client_email}
+        clientPhone={matter.client_phone}
+        conflictStatus={matter.conflict_status}
+        conflictNote={matter.conflict_note}
+        engagementStatus={matter.engagement_status}
+      />
 
       <MatterOnboardingPanel matterId={matterId} items={(onboardingItems ?? []) as { id: string; item_type: "task" | "document"; title: string; status: "open" | "completed" | "waived"; is_required: boolean }[]} />
 

@@ -1342,9 +1342,15 @@ export type Database = {
         Row: {
           alternative_explanations: string | null
           case_mode: string
+          client_email: string | null
+          client_name: string | null
+          client_phone: string | null
+          conflict_note: string | null
+          conflict_status: string
           created_at: string
           created_by: string
           defense_theory: string | null
+          engagement_status: string
           id: string
           jurisdiction: string | null
           matter_number: string
@@ -1359,9 +1365,15 @@ export type Database = {
         Insert: {
           alternative_explanations?: string | null
           case_mode: string
+          client_email?: string | null
+          client_name?: string | null
+          client_phone?: string | null
+          conflict_note?: string | null
+          conflict_status?: string
           created_at?: string
           created_by: string
           defense_theory?: string | null
+          engagement_status?: string
           id?: string
           jurisdiction?: string | null
           matter_number: string
@@ -1376,9 +1388,15 @@ export type Database = {
         Update: {
           alternative_explanations?: string | null
           case_mode?: string
+          client_email?: string | null
+          client_name?: string | null
+          client_phone?: string | null
+          conflict_note?: string | null
+          conflict_status?: string
           created_at?: string
           created_by?: string
           defense_theory?: string | null
+          engagement_status?: string
           id?: string
           jurisdiction?: string | null
           matter_number?: string

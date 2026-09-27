@@ -14,9 +14,15 @@ export async function createMatter(_prevState: CreateMatterState, formData: Form
   const jurisdiction = String(formData.get("jurisdiction") ?? "").trim() || undefined
   const venue = String(formData.get("venue") ?? "").trim() || undefined
   const onboardingTemplateId = String(formData.get("onboarding_template_id") ?? "").trim()
+  const clientName = String(formData.get("client_name") ?? "").trim()
+  const clientEmail = String(formData.get("client_email") ?? "").trim().toLowerCase()
+  const clientPhone = String(formData.get("client_phone") ?? "").trim()
 
   if (!matterNumber || !name || !caseMode) {
     return { error: "Matter number, name, and case mode are required." }
+  }
+  if (clientEmail && !clientEmail.includes("@")) {
+    return { error: "Enter a valid client email address or leave it blank." }
   }
 
   const supabase = await createClient()
@@ -77,6 +83,43 @@ export async function createMatter(_prevState: CreateMatterState, formData: Form
       })))
       if (onboardingError) return { error: `Matter created, but its onboarding checklist could not be added: ${onboardingError.message}` }
     }
+  }
+
+  if (clientName) {
+    const { error: clientUpdateError } = await supabase.from("matters").update({
+      client_name: clientName,
+      client_email: clientEmail || null,
+      client_phone: clientPhone || null,
+      conflict_status: "pending",
+      engagement_status: "not_started",
+    }).eq("id", data.id)
+    if (clientUpdateError) return { error: `Matter created, but the client identity could not be saved: ${clientUpdateError.message}` }
+
+    const { error: contactError } = await supabase.from("matter_contacts").insert({
+      matter_id: data.id,
+      display_name: clientName,
+      contact_type: "prospective_client",
+      email: clientEmail || null,
+      phone: clientPhone || null,
+      notes: "Created from new-matter client intake.",
+      created_by: userData.user.id,
+      updated_at: new Date().toISOString(),
+    })
+    if (contactError) return { error: `Matter created, but the client contact could not be saved: ${contactError.message}` }
+
+    const [{ data: contactMatches }, { data: subjectMatches }] = await Promise.all([
+      supabase.from("matter_contacts").select("matter_id, display_name, contact_type, email").neq("matter_id", data.id).ilike("display_name", clientName).limit(20),
+      supabase.from("subjects").select("matter_id, display_name, subject_type").neq("matter_id", data.id).ilike("display_name", clientName).limit(20),
+    ])
+    const matches = [...(contactMatches ?? []).map((match) => ({ matterId: match.matter_id, label: match.display_name, kind: "contact" })), ...(subjectMatches ?? []).map((match) => ({ matterId: match.matter_id, label: match.display_name, kind: match.subject_type }))]
+    const relatedMatterIds = [...new Set(matches.map((match) => match.matterId))]
+    const { data: relatedMatters } = relatedMatterIds.length ? await supabase.from("matters").select("id, name, matter_number").in("id", relatedMatterIds) : { data: [] }
+    const matterNames = new Map((relatedMatters ?? []).map((matter) => [matter.id, `${matter.name} (${matter.matter_number})`]))
+    const conflictStatus = matches.length ? "possible_conflict" : "clear"
+    const conflictNote = matches.length
+      ? `Possible match${matches.length === 1 ? "" : "es"}: ${matches.slice(0, 5).map((match) => `${match.label} in ${matterNames.get(match.matterId) ?? "another accessible matter"}`).join("; ")}. Review before confirming representation.`
+      : "No matching contact or subject was found in the matters currently accessible to you. Review remains a human responsibility."
+    await supabase.from("matters").update({ conflict_status: conflictStatus, conflict_note: conflictNote }).eq("id", data.id)
   }
 
   redirect(`/matters/${data.id}`)
