@@ -1347,6 +1347,8 @@ export type Database = {
           client_phone: string | null
           conflict_note: string | null
           conflict_status: string
+          conflict_reviewed_at: string | null
+          intake_activated_at: string | null
           created_at: string
           created_by: string
           defense_theory: string | null
@@ -1370,6 +1372,8 @@ export type Database = {
           client_phone?: string | null
           conflict_note?: string | null
           conflict_status?: string
+          conflict_reviewed_at?: string | null
+          intake_activated_at?: string | null
           created_at?: string
           created_by: string
           defense_theory?: string | null
@@ -1393,6 +1397,8 @@ export type Database = {
           client_phone?: string | null
           conflict_note?: string | null
           conflict_status?: string
+          conflict_reviewed_at?: string | null
+          intake_activated_at?: string | null
           created_at?: string
           created_by?: string
           defense_theory?: string | null
@@ -1862,6 +1868,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      manage_matter_intake: {
+        Args: { p_matter_id: string; p_operation: string; p_note?: string }
+        Returns: Json
+      }
       get_appointment_packet: {
         Args: { p_token: string }
         Returns: Json

@@ -42,6 +42,8 @@ Every matter is isolated, every substantive report is derived from recorded matt
 - Intake review with duplicate-contact detection, cross-matter contact history, and conflict search across people and organizations.
 - Matter creation can capture client name, email, and phone immediately, create a prospective-client contact, and run a matter-scoped conflict check.
 - Client-intake panel with conflict states (`not_started`, `pending`, `clear`, `possible_conflict`, `waived`), review notes, rerun controls, and an explicit clear/waive decision path.
+- Matter intake progress tracker with client identity editing, direct questionnaire/engagement-letter access, draft editing and approval, preparation links, explicit email queueing, delivery/completion status, and reusable follow-up tasks.
+- Attorney/admin activation checks client identity, an explicit conflict review, completed questionnaire, a signature on the current engagement-letter version, current document reviews, and required setup items. Activation and its audit entry run in one database transaction; existing active matters are not treated as having completed intake.
 - Intake acceptance that can create a matter and begin the engagement workflow.
 - Matter contacts with archive/reactivate controls.
 - Ready-made intake questionnaire, engagement letter, consultation preparation, and litigation preparation documents.
@@ -178,10 +180,10 @@ supabase db push --linked
 The latest applied migration is:
 
 ```text
-supabase/migrations/20260926120000_client_intake_conflict_state.sql
+supabase/migrations/20260930121000_current_intake_document_review.sql
 ```
 
-It adds matter-level client identity, conflict-review state, and engagement status fields. All 51 repository migrations were confirmed applied to the linked Supabase project on September 30, 2026.
+The intake workflow migrations add protected review/activation dates, attorney/admin activation checks, and current-document review enforcement. All 53 repository migrations were confirmed applied to the linked Supabase project on September 30, 2026.
 
 For a non-production environment, seed one fully worked fictional matter:
 
@@ -214,13 +216,14 @@ git diff --check
 npm audit --omit=dev
 ```
 
-The security suite currently contains 86 tests and runs against the linked Supabase project when no isolated local Postgres instance is available. Browser walkthroughs should cover login, matter creation, scheduling, readiness, documents, client access, reports, empty states, denied states, and mobile/tablet layouts.
+The verification suite currently contains 93 tests, including intake progression and activation checks. Security tests run against fictional records in the linked Supabase project when no isolated local Postgres instance is available. Browser walkthroughs should cover login, matter creation, scheduling, readiness, documents, client access, reports, empty states, denied states, and mobile/tablet layouts.
 
 ## Current release checkpoint
 
 - This release includes matter onboarding kits, workflow-defined matter setup, client identity capture, prospective-client contact creation, and conflict-review state on the matter command center.
 - Client-intake implementation checkpoint: `42de8b9`.
-- Database migrations are current through `20260926120000_client_intake_conflict_state.sql`.
+- Database migrations are current through `20260930121000_current_intake_document_review.sql`.
+- This release connects intake documents, follow-ups, attorney review, and matter activation. Both intake workflow migrations are applied; pushing this release to `main` triggers the Vercel production build.
 
 ## Deployment and recovery save point
 

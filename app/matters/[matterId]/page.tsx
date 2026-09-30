@@ -7,6 +7,7 @@ import { ArrowUpRight, BookOpen, CheckCircle2, FileSearch, Gavel, ShieldAlert } 
 import { AuditTrail, type AuditTrailEntry } from "@/components/audit-trail"
 import { EvidenceHealthPanel } from "@/components/matters/evidence-health-panel"
 import { ClientIntakePanel } from "@/components/matters/client-intake-panel"
+import { IntakeWorkflowPanel } from "@/components/matters/intake-workflow-panel"
 import { MatterHeader } from "@/components/matters/matter-header"
 import { MatterOnboardingPanel } from "@/components/matters/matter-onboarding-panel"
 import { RecommendedActionsList } from "@/components/matters/recommended-actions-list"
@@ -94,7 +95,7 @@ export default async function MatterCommandCenterPage({ params }: { params: Prom
       .limit(8),
     supabase
       .from("matter_onboarding_items")
-      .select("id, item_type, title, status, is_required")
+      .select("id, item_type, title, status, is_required, updated_at")
       .eq("matter_id", matterId)
       .order("created_at", { ascending: true }),
   ])
@@ -116,6 +117,26 @@ export default async function MatterCommandCenterPage({ params }: { params: Prom
   }
 
   const actions = recommendedActions(summary)
+
+  const { data: userData } = await supabase.auth.getUser()
+  const [{ data: intakeDocuments, error: intakeDocumentsError }, { data: intakeDrafts, error: intakeDraftsError }, { data: intakeSignatures, error: intakeSignaturesError }, { data: intakeVersions, error: intakeVersionsError }, { data: intakePackets }, { data: intakeEmails }, { data: membership }] = await Promise.all([
+    supabase.from("appointment_documents").select("id, name, status, appointment_id").eq("matter_id", matterId).in("name", ["Intake questionnaire", "Engagement letter"]).order("created_at", { ascending: false }).order("id", { ascending: false }),
+    supabase.from("appointment_document_drafts").select("id, appointment_document_id, status, updated_at").eq("matter_id", matterId),
+    supabase.from("appointment_document_signatures").select("appointment_document_id, status, signed_version_id").eq("matter_id", matterId).eq("signer_role", "client"),
+    supabase.from("appointment_document_versions").select("id, appointment_document_id").eq("matter_id", matterId).order("version_number", { ascending: false }),
+    supabase.from("appointment_packets").select("appointment_id, token, status, expires_at").eq("matter_id", matterId).eq("status", "active"),
+    supabase.from("appointment_communications").select("appointment_id, body, status").eq("matter_id", matterId).eq("subject", "Your intake preparation packet").in("status", ["sent", "queued"]).order("created_at", { ascending: false }),
+    userData.user ? supabase.from("matter_members").select("role").eq("matter_id", matterId).eq("user_id", userData.user.id).maybeSingle() : Promise.resolve({ data: null }),
+  ])
+  if (intakeDocumentsError || intakeDraftsError || intakeSignaturesError || intakeVersionsError) throw new Error("Unable to load the client intake workflow.")
+  const documents = (intakeDocuments ?? []).map((document) => {
+    const draft = intakeDrafts?.find((item) => item.appointment_document_id === document.id)
+    const signature = intakeSignatures?.find((item) => item.appointment_document_id === document.id)
+    const version = intakeVersions?.find((item) => item.appointment_document_id === document.id)
+    const packet = intakePackets?.find((item) => item.appointment_id === document.appointment_id && Date.parse(item.expires_at) > Date.now())
+    const email = packet ? intakeEmails?.find((item) => item.appointment_id === document.appointment_id && item.body.includes(`/prepare/${packet.token}`)) : null
+    return { id: document.id, name: document.name, status: document.status, draftId: draft?.id ?? null, draftStatus: draft?.status ?? null, updatedAt: draft?.updated_at, signatureStatus: signature?.status ?? null, signatureCurrent: !!version && signature?.signed_version_id === version.id, deliveryStatus: email?.status ?? null }
+  })
 
   const auditEntries: AuditTrailEntry[] = (auditRows ?? []).map((row) => ({
     id: row.id,
@@ -141,6 +162,8 @@ export default async function MatterCommandCenterPage({ params }: { params: Prom
       />
 
       <MatterOnboardingPanel matterId={matterId} items={(onboardingItems ?? []) as { id: string; item_type: "task" | "document"; title: string; status: "open" | "completed" | "waived"; is_required: boolean }[]} />
+
+      <IntakeWorkflowPanel matterId={matterId} clientName={matter.client_name} clientEmail={matter.client_email} clientPhone={matter.client_phone} conflictStatus={matter.conflict_status} conflictReviewed={!!matter.conflict_reviewed_at && ["clear", "waived"].includes(matter.conflict_status)} activatedAt={matter.intake_activated_at} canManage={["attorney", "admin"].includes(membership?.role ?? "")} documents={documents} items={onboardingItems ?? []} />
 
       <section className="relative overflow-hidden rounded-2xl bg-[#23313d] px-5 py-6 text-white shadow-xl shadow-[#23313d]/10 sm:px-7 sm:py-7">
         <div className="absolute -right-16 -top-24 size-72 rounded-full border border-white/10" />

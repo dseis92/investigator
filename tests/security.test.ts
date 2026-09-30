@@ -481,6 +481,70 @@ after(async () => {
 // Matter isolation
 // ============================================================
 
+describe("matter intake activation", () => {
+  test("enforces review, current signatures, roles, and idempotent follow-ups", async () => {
+    const { data: created, error } = await clientA.rpc("create_matter", { p_matter_number: `SECTEST-INTAKE-${RUN_ID}`, p_name: "Fictional intake workflow", p_case_mode: "civil_defense" })
+    assert.ifError(error)
+    const id = created!.id
+    const manage = (operation: string, note?: string) => clientA.rpc("manage_matter_intake", { p_matter_id: id, p_operation: operation, p_note: note })
+    try {
+      assert.ok((await anonClient.rpc("manage_matter_intake", { p_matter_id: id, p_operation: "prepare" })).error)
+      assert.ok((await clientB.rpc("manage_matter_intake", { p_matter_id: id, p_operation: "prepare" })).error)
+      assert.ok((await manage("activate")).error)
+      assert.ifError((await clientA.from("matters").update({ client_name: "Fictional Client", conflict_status: "clear" }).eq("id", id)).error)
+      assert.ok((await clientA.from("matters").update({ conflict_reviewed_at: new Date().toISOString() }).eq("id", id)).error)
+      assert.ok((await clientA.from("matters").update({ intake_activated_at: new Date().toISOString() }).eq("id", id)).error)
+      assert.ok((await manage("review_conflicts", "")).error)
+      assert.ifError((await manage("review_conflicts", "Attorney reviewed accessible records.")).error)
+      assert.ifError((await manage("prepare")).error)
+      assert.ifError((await manage("prepare")).error)
+      const { data: tasks } = await clientA.from("matter_onboarding_items").select("id, title").eq("matter_id", id)
+      assert.equal(tasks?.length, 4)
+      assert.ifError((await admin.from("matter_members").insert({ matter_id: id, user_id: userBId, role: "paralegal" })).error)
+      assert.ok((await clientB.rpc("manage_matter_intake", { p_matter_id: id, p_operation: "activate" })).error)
+      const review = tasks!.find((task) => task.title === "Review completed intake questionnaire")!
+      assert.ok((await clientB.from("matter_onboarding_items").update({ status: "completed" }).eq("id", review.id)).error)
+      assert.ok((await manage("activate")).error)
+      const { data: appointment, error: appointmentError } = await clientA.from("appointments").insert({ matter_id: id, title: "Intake", workflow_key: "initial_consultation", starts_at: new Date(Date.now() + 86400000).toISOString(), ends_at: new Date(Date.now() + 90000000).toISOString(), created_by: userAId }).select("id").single()
+      assert.ifError(appointmentError)
+      let letterId = ""
+      let letterDraftId = ""
+      for (const name of ["Intake questionnaire", "Engagement letter"]) {
+        const { data: document, error: documentError } = await clientA.from("appointment_documents").insert({ matter_id: id, appointment_id: appointment!.id, name, status: name === "Engagement letter" ? "signed" : "received", created_by: userAId }).select("id").single()
+        assert.ifError(documentError)
+        const { data: draft, error: draftError } = await clientA.from("appointment_document_drafts").insert({ matter_id: id, appointment_document_id: document!.id, template_key: name === "Engagement letter" ? "engagement_letter" : "intake_questionnaire", content: "Fictional reviewed document", status: "final", visibility: "client", created_by: userAId, updated_by: userAId }).select("id").single()
+        assert.ifError(draftError)
+        if (name === "Engagement letter") {
+          letterId = document!.id
+          letterDraftId = draft!.id
+          const { data: version } = await clientA.from("appointment_document_versions").select("id").eq("appointment_document_id", letterId).order("version_number", { ascending: false }).limit(1).single()
+          assert.ifError((await clientA.from("appointment_document_signatures").insert({ matter_id: id, appointment_document_id: letterId, signer_role: "client", status: "signed", signer_name: "Fictional Client", signed_at: new Date().toISOString(), signed_version_id: version!.id, created_by: userAId })).error)
+        }
+      }
+      assert.ok((await manage("activate")).error, "documents alone cannot bypass review tasks")
+      assert.ifError((await clientA.from("matter_onboarding_items").update({ status: "completed" }).eq("matter_id", id)).error)
+      assert.ifError((await clientA.from("appointment_document_drafts").update({ content: "A revised engagement letter" }).eq("id", letterDraftId)).error)
+      assert.ok((await manage("activate")).error, "an earlier-version signature must be rejected")
+      const { data: newestVersion } = await clientA.from("appointment_document_versions").select("id").eq("appointment_document_id", letterId).order("version_number", { ascending: false }).limit(1).single()
+      assert.ifError((await clientA.from("appointment_document_signatures").update({ signed_version_id: newestVersion!.id }).eq("appointment_document_id", letterId)).error)
+      assert.ok((await manage("activate")).error, "a revised document requires a fresh attorney review")
+      assert.ifError((await clientA.from("matter_onboarding_items").update({ status: "completed", updated_at: new Date().toISOString() }).eq("matter_id", id)).error)
+      assert.ifError((await manage("activate")).error)
+      assert.ifError((await manage("activate")).error)
+      const { data: matter } = await clientA.from("matters").select("intake_activated_at, engagement_status").eq("id", id).single()
+      assert.ok(matter!.intake_activated_at)
+      assert.equal(matter!.engagement_status, "signed")
+      const { data: audit } = await clientA.from("audit_events").select("id").eq("matter_id", id).eq("summary", "Intake workflow: activate")
+      assert.equal(audit!.length, 1)
+      assert.ifError((await clientA.from("matters").update({ client_name: "Different Client" }).eq("id", id)).error)
+      const { data: changed } = await clientA.from("matters").select("conflict_reviewed_at").eq("id", id).single()
+      assert.equal(changed!.conflict_reviewed_at, null)
+    } finally {
+      await admin.from("matters").delete().eq("id", id)
+    }
+  })
+})
+
 describe("matter isolation", () => {
   test("User A can read Matter A", async () => {
     const { data } = await clientA.from("matters").select("id").eq("id", matterA.matterId).maybeSingle()

@@ -12,6 +12,8 @@ The product doctrine remains unchanged: MatterPilot helps a firm organize intake
 
 ## Current snapshot
 
+September 30 intake workflow release: implemented and verified with both database migrations applied. The matter command center now provides client identity editing, intake progress, direct questionnaire/engagement-letter access, document draft approval, preparation links and explicit email queueing, delivery status, reusable follow-ups, attorney conflict confirmation, and audited activation. Activation requires signatures and attorney reviews covering the current document versions. Existing appointment documents and onboarding tasks remain the source records. All 93 tests, typecheck, lint, and production build pass; pushing the release to `main` triggers Vercel deployment.
+
 MatterPilot currently provides the core legal-operations workflow:
 
 - Intake, conflict review, contact records, new-client scheduling, matter creation, and engagement workflow.
