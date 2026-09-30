@@ -40,6 +40,8 @@ Every matter is isolated, every substantive report is derived from recorded matt
 
 - Public booking pages for prospective clients.
 - Intake review with duplicate-contact detection, cross-matter contact history, and conflict search across people and organizations.
+- Matter creation can capture client name, email, and phone immediately, create a prospective-client contact, and run a matter-scoped conflict check.
+- Client-intake panel with conflict states (`not_started`, `pending`, `clear`, `possible_conflict`, `waived`), review notes, rerun controls, and an explicit clear/waive decision path.
 - Intake acceptance that can create a matter and begin the engagement workflow.
 - Matter contacts with archive/reactivate controls.
 - Ready-made intake questionnaire, engagement letter, consultation preparation, and litigation preparation documents.
@@ -173,11 +175,19 @@ The database source of truth is [supabase/migrations](supabase/migrations). Appl
 supabase db push --linked
 ```
 
-The latest migration adds report PDF metadata and report history:
+The latest applied migration adds report PDF metadata and report history:
 
 ```text
 supabase/migrations/20260924120000_report_exports_and_history.sql
 ```
+
+The next migration is committed locally and is ready to apply to the linked project before the matching client-intake code is released:
+
+```text
+supabase/migrations/20260926120000_client_intake_conflict_state.sql
+```
+
+It adds matter-level client identity, conflict-review state, and engagement status fields. Apply it with `supabase db push --linked` before publishing the client-intake slice.
 
 For a non-production environment, seed one fully worked fictional matter:
 
@@ -211,6 +221,12 @@ npm audit --omit=dev
 ```
 
 The security suite currently contains 86 tests and runs against the linked Supabase project when no isolated local Postgres instance is available. Browser walkthroughs should cover login, matter creation, scheduling, readiness, documents, client access, reports, empty states, denied states, and mobile/tablet layouts.
+
+## Current release checkpoint
+
+- Latest GitHub/Vercel release: matter onboarding kits and workflow-defined matter setup.
+- Local release ready to publish: client identity capture, prospective-client contact creation, and conflict-review state on the matter command center.
+- The client-intake migration is intentionally listed as pending until it is applied to the linked Supabase project.
 
 ## Deployment and recovery save point
 
