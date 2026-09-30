@@ -175,19 +175,13 @@ The database source of truth is [supabase/migrations](supabase/migrations). Appl
 supabase db push --linked
 ```
 
-The latest applied migration adds report PDF metadata and report history:
-
-```text
-supabase/migrations/20260924120000_report_exports_and_history.sql
-```
-
-The next migration is committed locally and is ready to apply to the linked project before the matching client-intake code is released:
+The latest applied migration is:
 
 ```text
 supabase/migrations/20260926120000_client_intake_conflict_state.sql
 ```
 
-It adds matter-level client identity, conflict-review state, and engagement status fields. Apply it with `supabase db push --linked` before publishing the client-intake slice.
+It adds matter-level client identity, conflict-review state, and engagement status fields. All 51 repository migrations were confirmed applied to the linked Supabase project on September 30, 2026.
 
 For a non-production environment, seed one fully worked fictional matter:
 
@@ -224,9 +218,9 @@ The security suite currently contains 86 tests and runs against the linked Supab
 
 ## Current release checkpoint
 
-- Latest GitHub/Vercel release: matter onboarding kits and workflow-defined matter setup.
-- Local release ready to publish: client identity capture, prospective-client contact creation, and conflict-review state on the matter command center.
-- The client-intake migration is intentionally listed as pending until it is applied to the linked Supabase project.
+- This release includes matter onboarding kits, workflow-defined matter setup, client identity capture, prospective-client contact creation, and conflict-review state on the matter command center.
+- Client-intake implementation checkpoint: `42de8b9`.
+- Database migrations are current through `20260926120000_client_intake_conflict_state.sql`.
 
 ## Deployment and recovery save point
 
