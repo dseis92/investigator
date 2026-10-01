@@ -57,7 +57,9 @@ type ClientPortalDocumentRequestRow = { id: string; matter_id: string; appointme
 
 type MatterPilotInsert<T> = Partial<T>
 type FirmRow = { id: string; name: string; contact_email: string; contact_phone: string; website: string; address: string; timezone: string; jurisdiction: string; brand_color: string; document_footer: string; business_hours: Json; created_by: string; created_at: string; updated_at: string }
-type FirmMemberRow = { firm_id: string; user_id: string; role: string; created_at: string }
+type FirmMemberRow = { firm_id: string; user_id: string; role: string; member_role: string; created_at: string }
+type FirmInvitationRow = { id: string; firm_id: string; email: string; member_role: string; token_hash: string; invited_by: string; expires_at: string; accepted_at: string | null; revoked_at: string | null; created_at: string }
+type FirmEmailCommunicationRow = { id: string; firm_id: string; invitation_id: string | null; recipient: string; subject: string; body: string; status: string; attempt_count: number; next_attempt_at: string; last_attempt_at: string | null; provider: string | null; provider_message_id: string | null; provider_response: Json | null; error_message: string | null; sent_at: string | null; created_by: string; created_at: string; updated_at: string }
 type MatterPilotUpdate<T> = Partial<T>
 
 export type Database = {
@@ -70,6 +72,8 @@ export type Database = {
     Tables: {
       firms: MatterPilotTable<FirmRow, Partial<FirmRow>, Partial<FirmRow>>
       firm_members: MatterPilotTable<FirmMemberRow, Partial<FirmMemberRow>, Partial<FirmMemberRow>>
+      firm_invitations: MatterPilotTable<FirmInvitationRow, Partial<FirmInvitationRow>, Partial<FirmInvitationRow>>
+      firm_email_communications: MatterPilotTable<FirmEmailCommunicationRow, Partial<FirmEmailCommunicationRow>, Partial<FirmEmailCommunicationRow>>
       appointment_series: {
         Row: {
           id: string
@@ -1880,6 +1884,11 @@ export type Database = {
       create_firm: { Args: { p_settings: Json; p_matter_ids?: string[] }; Returns: string }
       connect_firm_matters: { Args: { p_firm_id: string; p_matter_ids: string[] }; Returns: undefined }
       get_public_firm_identity: { Args: { p_booking_slug?: string; p_packet_token?: string }; Returns: Json }
+      create_firm_invitation: { Args: { p_firm_id: string; p_email: string; p_member_role: string; p_token_hash: string }; Returns: FirmInvitationRow }
+      revoke_firm_invitation: { Args: { p_invitation_id: string }; Returns: undefined }
+      accept_firm_invitation: { Args: { p_token_hash: string }; Returns: string }
+      update_firm_member: { Args: { p_firm_id: string; p_user_id: string; p_role: string; p_member_role: string }; Returns: undefined }
+      remove_firm_member: { Args: { p_firm_id: string; p_user_id: string }; Returns: undefined }
       manage_matter_intake: {
         Args: { p_matter_id: string; p_operation: string; p_note?: string }
         Returns: Json
@@ -2044,6 +2053,10 @@ export type Database = {
       claim_matterpilot_email_communications: {
         Args: { p_limit?: number; p_now?: string }
         Returns: AppointmentCommunicationRow[]
+      }
+      claim_matterpilot_firm_email_communications: {
+        Args: { p_now?: string; p_limit?: number }
+        Returns: FirmEmailCommunicationRow[]
       }
     }
     Enums: {

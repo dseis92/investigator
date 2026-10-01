@@ -177,6 +177,10 @@ Settings → Firm & workspace now stores shared business identity, contact infor
 
 Existing matters are connected explicitly by an administrator who also manages those matters. Administrators can select a firm when creating a new matter; creation and connection are atomic, and blank jurisdiction inherits the firm default. Firm hours supply availability only where no custom active matter hours exist; custom hours remain overrides.
 
+### Team administration (September 30, 2026)
+
+Settings → Team, roles & permissions now supports expiring email invitations, secure invitation links, invitation revocation, administrator/member status, attorney/investigator/paralegal/litigation-support/expert roles, administrator promotion, and member removal. Invitations are queued into the durable firm email outbox and delivered by the existing Resend worker when configured; the secure link remains available as a fallback. Invitation acceptance verifies the signed-in account email in the database. Firm membership never replaces matter-level assignment, and administrators cannot remove their own administrator access.
+
 New appointment document drafts use the connected firm's name, contacts, footer, and time zone. Existing document versions are not rewritten. Active booking pages and unexpired preparation links expose only public business identity; preparation times use the firm time zone. Personal settings remain separate. Logo upload, team invitations, additional administrators, retention/export controls, and firm-wide reusable templates are still later slices.
 
 Verification: 97 tests pass, including two-user firm permissions/defaults and public identity revocation; typecheck, lint, and production build pass. Tests use isolated fictional records in the linked project and clean up after themselves.

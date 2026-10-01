@@ -53,3 +53,23 @@ export async function deliverQueuedAppointmentEmails() {
 
   return { status: "completed" as const, claimed: claimed?.length ?? 0, sent, requeued, failed }
 }
+
+export async function deliverQueuedFirmInvitationEmails() {
+  if (!isTransactionalEmailConfigured()) return { status: "not_configured" as const, claimed: 0, sent: 0, requeued: 0, failed: 0 }
+  const admin = createAdminClient()
+  const { data: claimed, error } = await admin.rpc("claim_matterpilot_firm_email_communications", { p_now: new Date().toISOString(), p_limit: 20 })
+  if (error) throw error
+  let sent = 0; let requeued = 0; let failed = 0
+  for (const communication of claimed ?? []) {
+    const result = await sendTransactionalEmail({ communicationId: communication.id, recipient: communication.recipient, subject: communication.subject, body: communication.body })
+    if (result.ok) {
+      await admin.from("firm_email_communications").update({ status: "sent", provider: result.provider, provider_message_id: result.messageId, provider_response: result.response, sent_at: new Date().toISOString(), error_message: null, updated_at: new Date().toISOString() }).eq("id", communication.id).eq("status", "sending")
+      sent += 1
+    } else {
+      const shouldRetry = result.retryable && communication.attempt_count < MAX_ATTEMPTS
+      await admin.from("firm_email_communications").update({ status: shouldRetry ? "queued" : "failed", next_attempt_at: new Date(Date.now() + 15 * 60_000).toISOString(), provider: "resend", provider_response: result.response, error_message: result.error.slice(0, 1000), updated_at: new Date().toISOString() }).eq("id", communication.id).eq("status", "sending")
+      if (shouldRetry) requeued += 1; else failed += 1
+    }
+  }
+  return { status: "completed" as const, claimed: claimed?.length ?? 0, sent, requeued, failed }
+}

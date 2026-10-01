@@ -14,6 +14,8 @@ The product doctrine remains unchanged: MatterPilot helps a firm organize intake
 
 September 30 shared-firm settings slice: persisted identity, contacts, website/address, brand accent/footer, time zone, jurisdiction, and business hours; administrator-only edits; assigned-matter staff read access without expanding matter access; explicit connection of existing matters; atomic firm matter creation with jurisdiction defaults; custom availability overrides; firm identity in new appointment document drafts, active booking pages, and preparation packets. Migration `20260930130000_shared_firm_settings.sql` applied. All 97 tests pass. Logos, invitations/additional administrators, reusable firm templates, and broader administration remain open.
 
+September 30 team administration slice: expiring invitation records, secure token links, email matching at acceptance, administrator/member status, role changes, revocation, removal, and database-enforced self-protection. Migration `20260930150000_firm_team_invitations.sql` applied. The follow-up email-delivery slice adds a firm-scoped durable outbox and Resend worker delivery in migration `20260930160000_firm_invitation_email_delivery.sql`; copied secure links remain available when Resend is not configured.
+
 September 30 intake workflow release: implemented and verified with both database migrations applied. The matter command center now provides client identity editing, intake progress, direct questionnaire/engagement-letter access, document draft approval, preparation links and explicit email queueing, delivery status, reusable follow-ups, attorney conflict confirmation, and audited activation. Activation requires signatures and attorney reviews covering the current document versions. Existing appointment documents and onboarding tasks remain the source records. All 93 tests, typecheck, lint, and production build pass; pushing the release to `main` triggers Vercel deployment.
 
 MatterPilot currently provides the core legal-operations workflow:
@@ -98,7 +100,7 @@ The settings screen now exists and personal preferences are persisted. This phas
 - [x] Ship the personal settings foundation and `user_preferences` migration.
 - [x] Add a firm/workspace settings model with a clear owner and membership boundary.
 - [~] Persist firm identity, logo/brand colors, default time zone, business hours, date/time format, matter numbering, practice areas, and default appointment settings. Identity, contacts, accent/footer, time zone, jurisdiction, and business hours are complete; logos and the additional defaults remain open.
-- [ ] Add team invitations, invitation expiry, member suspension, role assignment, and last-active/security visibility.
+- [~] Add team invitations, invitation expiry, member suspension, role assignment, and last-active/security visibility. Invitations, expiry, revocation, role assignment, and removal are complete; suspension and last-active visibility remain open.
 - [~] Enforce roles and permissions in server actions and database policies, not only by hiding buttons. Shared firm settings and firm/matter connections are enforced; granular administration remains open.
 - [ ] Add configurable matter visibility, private matters, team groups, and permission-aware sharing.
 - [ ] Add granular controls for evidence, reports, client portal content, billing, exports, templates, and integrations.
