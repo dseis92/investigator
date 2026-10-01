@@ -47,7 +47,7 @@ type BookingPageRow = { id: string; matter_id: string; slug: string; firm_name: 
 type BookingRequestRow = { id: string; matter_id: string; booking_page_id: string; appointment_type_name: string; requested_start: string; full_name: string; email: string; summary: string | null; status: string; created_at: string; reviewed_at: string | null }
 type CalendarNoteRow = { id: string; matter_id: string | null; title: string; note: string; starts_at: string; ends_at: string; created_by: string; created_at: string; updated_at: string }
 type IntakeReviewRow = { id: string; matter_id: string; booking_request_id: string; reviewer_id: string; decision: string; conflict_status: string; reviewer_note: string | null; created_at: string; updated_at: string }
-type CalendarAvailabilityRuleRow = { id: string; matter_id: string; weekday: number; start_time: string; end_time: string; timezone: string; label: string | null; is_active: boolean; created_by: string; created_at: string; updated_at: string }
+type CalendarAvailabilityRuleRow = { id: string; matter_id: string; weekday: number; start_time: string; end_time: string; timezone: string; label: string | null; is_active: boolean; firm_default: boolean; created_by: string; created_at: string; updated_at: string }
 type CalendarBlackoutRow = { id: string; matter_id: string; starts_at: string; ends_at: string; reason: string; status: string; created_by: string; created_at: string; updated_at: string }
 type UserPreferenceRow = { user_id: string; preferences: Json; created_at: string; updated_at: string }
 type AppointmentRescheduleHistoryRow = { id: string; matter_id: string; appointment_id: string; previous_starts_at: string; previous_ends_at: string; next_starts_at: string; next_ends_at: string; reason: string | null; changed_by: string; created_at: string }
@@ -56,6 +56,8 @@ type ClientPortalActivityRow = { id: string; matter_id: string; activity_type: s
 type ClientPortalDocumentRequestRow = { id: string; matter_id: string; appointment_id: string | null; title: string; description: string; status: string; storage_path: string | null; file_name: string | null; mime_type: string | null; size_bytes: number | null; uploaded_by_email: string | null; uploaded_at: string | null; reviewed_by: string | null; reviewed_at: string | null; reviewer_note: string | null; requested_by: string; created_at: string; updated_at: string }
 
 type MatterPilotInsert<T> = Partial<T>
+type FirmRow = { id: string; name: string; contact_email: string; contact_phone: string; website: string; address: string; timezone: string; jurisdiction: string; brand_color: string; document_footer: string; business_hours: Json; created_by: string; created_at: string; updated_at: string }
+type FirmMemberRow = { firm_id: string; user_id: string; role: string; created_at: string }
 type MatterPilotUpdate<T> = Partial<T>
 
 export type Database = {
@@ -66,6 +68,8 @@ export type Database = {
   }
   public: {
     Tables: {
+      firms: MatterPilotTable<FirmRow, Partial<FirmRow>, Partial<FirmRow>>
+      firm_members: MatterPilotTable<FirmMemberRow, Partial<FirmMemberRow>, Partial<FirmMemberRow>>
       appointment_series: {
         Row: {
           id: string
@@ -1345,6 +1349,7 @@ export type Database = {
           client_email: string | null
           client_name: string | null
           client_phone: string | null
+          firm_id: string | null
           conflict_note: string | null
           conflict_status: string
           conflict_reviewed_at: string | null
@@ -1370,6 +1375,7 @@ export type Database = {
           client_email?: string | null
           client_name?: string | null
           client_phone?: string | null
+          firm_id?: string | null
           conflict_note?: string | null
           conflict_status?: string
           conflict_reviewed_at?: string | null
@@ -1395,6 +1401,7 @@ export type Database = {
           client_email?: string | null
           client_name?: string | null
           client_phone?: string | null
+          firm_id?: string | null
           conflict_note?: string | null
           conflict_status?: string
           conflict_reviewed_at?: string | null
@@ -1868,6 +1875,11 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      is_firm_admin: { Args: { p_firm_id: string }; Returns: boolean }
+      is_firm_member: { Args: { p_firm_id: string }; Returns: boolean }
+      create_firm: { Args: { p_settings: Json; p_matter_ids?: string[] }; Returns: string }
+      connect_firm_matters: { Args: { p_firm_id: string; p_matter_ids: string[] }; Returns: undefined }
+      get_public_firm_identity: { Args: { p_booking_slug?: string; p_packet_token?: string }; Returns: Json }
       manage_matter_intake: {
         Args: { p_matter_id: string; p_operation: string; p_note?: string }
         Returns: Json
@@ -1930,6 +1942,10 @@ export type Database = {
       calendar_slot_check: {
         Args: { p_ends_at: string; p_ignore_appointment_id?: string | null; p_matter_id: string; p_starts_at: string }
         Returns: Json
+      }
+      create_firm_matter: {
+        Args: { p_firm_id: string; p_matter_number: string; p_name: string; p_case_mode: string; p_jurisdiction?: string; p_venue?: string }
+        Returns: Database["public"]["Tables"]["matters"]["Row"]
       }
       create_matter: {
         Args: {

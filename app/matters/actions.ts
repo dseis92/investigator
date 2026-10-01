@@ -14,6 +14,7 @@ export async function createMatter(_prevState: CreateMatterState, formData: Form
   const jurisdiction = String(formData.get("jurisdiction") ?? "").trim() || undefined
   const venue = String(formData.get("venue") ?? "").trim() || undefined
   const onboardingTemplateId = String(formData.get("onboarding_template_id") ?? "").trim()
+  const firmId = String(formData.get("firm_id") ?? "").trim()
   const clientName = String(formData.get("client_name") ?? "").trim()
   const clientEmail = String(formData.get("client_email") ?? "").trim().toLowerCase()
   const clientPhone = String(formData.get("client_phone") ?? "").trim()
@@ -37,16 +38,17 @@ export async function createMatter(_prevState: CreateMatterState, formData: Form
       : {}
     onboardingTemplate = parseMatterStarterTemplates(preferences.matterTemplates).find((template) => template.id === onboardingTemplateId && template.active) ?? null
   }
-  const { data, error } = await supabase.rpc("create_matter", {
+  const args = {
     p_matter_number: matterNumber,
     p_name: name,
     p_case_mode: caseMode,
     p_jurisdiction: jurisdiction,
     p_venue: venue,
-  })
+  }
+  const { data, error } = firmId ? await supabase.rpc("create_firm_matter", { ...args, p_firm_id: firmId }) : await supabase.rpc("create_matter", args)
 
-  if (error) {
-    return { error: error.message }
+  if (error || !data) {
+    return { error: error?.message ?? "Unable to create the matter." }
   }
 
   if (onboardingTemplate) {

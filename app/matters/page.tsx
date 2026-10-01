@@ -21,6 +21,9 @@ export default async function MattersPage() {
     ? preferenceRow.preferences as Record<string, unknown>
     : {}
   const matterTemplates = parseMatterStarterTemplates(preferences.matterTemplates)
+  const { data: memberships } = userData.user ? await supabase.from("firm_members").select("firm_id").eq("user_id", userData.user.id).eq("role", "admin") : { data: [] }
+  const firmIds = memberships?.map((member) => member.firm_id) ?? []
+  const { data: firms } = firmIds.length ? await supabase.from("firms").select("id,name,jurisdiction").in("id", firmIds).order("name") : { data: [] }
 
-  return <IntelligenceDashboard matters={(matters ?? []) as IntelligenceMatter[]} matterTemplates={matterTemplates} />
+  return <IntelligenceDashboard matters={(matters ?? []) as IntelligenceMatter[]} matterTemplates={matterTemplates} firms={firms ?? []} />
 }

@@ -22,11 +22,13 @@ import type { MatterStarterTemplate } from "@/lib/matterpilot/customizations"
 
 const blankTemplateValue = "__blank_matter_template__"
 
-export function CreateMatterDialog({ matterTemplates = [] }: { matterTemplates?: MatterStarterTemplate[] }) {
+export type FirmChoice = { id: string; name: string; jurisdiction: string }
+export function CreateMatterDialog({ matterTemplates = [], firms = [] }: { matterTemplates?: MatterStarterTemplate[]; firms?: FirmChoice[] }) {
   const [open, setOpen] = useState(false)
   const [templateId, setTemplateId] = useState(blankTemplateValue)
   const [caseMode, setCaseMode] = useState<MatterStarterTemplate["caseMode"]>("criminal_defense")
   const [jurisdiction, setJurisdiction] = useState("")
+  const [firmId, setFirmId] = useState("")
   const [venue, setVenue] = useState("")
   const [state, formAction, isPending] = useActionState<CreateMatterState, FormData>(createMatter, { error: null })
   const activeMatterTemplates = matterTemplates.filter((template) => template.active)
@@ -38,7 +40,7 @@ export function CreateMatterDialog({ matterTemplates = [] }: { matterTemplates?:
     const template = activeMatterTemplates.find((candidate) => candidate.id === nextValue)
     if (!template) {
       setCaseMode("criminal_defense")
-      setJurisdiction("")
+      setJurisdiction(firms.find((firm) => firm.id === firmId)?.jurisdiction ?? "")
       setVenue("")
       return
     }
@@ -64,6 +66,7 @@ export function CreateMatterDialog({ matterTemplates = [] }: { matterTemplates?:
             <DialogDescription>Set up a new case workspace. Choose an onboarding kit to create the first questions, tasks, and document requests automatically.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
+            {firms.length > 0 && <label className="space-y-2 text-sm font-medium">Firm workspace<select name="firm_id" value={firmId} onChange={(event) => { setFirmId(event.target.value); setJurisdiction(firms.find((firm) => firm.id === event.target.value)?.jurisdiction ?? "") }} className="mt-2 w-full rounded-lg border border-[#ded9d0] bg-white p-3"><option value="">Independent matter</option>{firms.map((firm) => <option key={firm.id} value={firm.id}>{firm.name}</option>)}</select></label>}
             {activeMatterTemplates.length ? (
               <div className="space-y-2">
                 <Label htmlFor="matter_template">Starter template</Label>

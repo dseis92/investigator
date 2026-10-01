@@ -19,16 +19,16 @@ export type ClientPacketData = {
   }[]
 }
 
-function formatAppointmentDate(value: string) {
-  return new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }).format(new Date(value))
+function formatAppointmentDate(value: string, timeZone: string) {
+  return new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric", timeZone }).format(new Date(value))
 }
 
-function formatAppointmentTime(start: string, end: string) {
-  const formatter = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" })
+function formatAppointmentTime(start: string, end: string, timeZone: string) {
+  const formatter = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone })
   return `${formatter.format(new Date(start))} – ${formatter.format(new Date(end))}`
 }
 
-export function ClientPreparationPage({ token, packet }: { token: string; packet: ClientPacketData | null }) {
+export function ClientPreparationPage({ token, packet, firm }: { token: string; packet: ClientPacketData | null; firm?: import("@/lib/matterpilot/firm-settings").PublicFirmIdentity | null }) {
   const [fullName, setFullName] = useState(packet?.appointment.clientName ?? "")
   const [email, setEmail] = useState("")
   const [phone, setPhone] = useState("")
@@ -45,8 +45,9 @@ export function ClientPreparationPage({ token, packet }: { token: string; packet
 
   const appointmentLabel = useMemo(() => {
     if (!packet) return ""
-    return `${formatAppointmentDate(packet.appointment.startsAt)} · ${formatAppointmentTime(packet.appointment.startsAt, packet.appointment.endsAt)}`
-  }, [packet])
+    const zone = firm?.timezone ?? "UTC"
+    return `${formatAppointmentDate(packet.appointment.startsAt, zone)} · ${formatAppointmentTime(packet.appointment.startsAt, packet.appointment.endsAt, zone)} (${zone})`
+  }, [packet, firm?.timezone])
 
   if (!packet) {
     return (
@@ -98,11 +99,12 @@ export function ClientPreparationPage({ token, packet }: { token: string; packet
 
   return (
     <div className="min-h-svh bg-[#f4f1eb] text-[#23313d]">
-      <header className="flex min-h-20 items-center justify-between border-b border-[#ded9d0] bg-[#fbfaf7] px-5 py-4 sm:px-10">
-        <div className="flex items-center gap-3"><span className="flex size-9 items-center justify-center rounded-xl bg-[#23313d] text-white"><CalendarDays className="size-4" /></span><span><span className="block font-serif text-lg font-semibold tracking-tight">MatterPilot</span><span className="block text-[10px] font-medium uppercase tracking-[0.2em] text-[#8b8d88]">Harbor Legal</span></span></div>
+      <header style={firm ? { borderBottomColor: firm.brand_color } : undefined} className="flex min-h-20 items-center justify-between border-b border-[#ded9d0] bg-[#fbfaf7] px-5 py-4 sm:px-10">
+        <div className="flex items-center gap-3"><span className="flex size-9 items-center justify-center rounded-xl bg-[#23313d] text-white"><CalendarDays className="size-4" /></span><span><span className="block font-serif text-lg font-semibold tracking-tight">MatterPilot</span><span className="block text-[10px] font-medium uppercase tracking-[0.2em] text-[#8b8d88]">{firm?.name ?? "Your legal team"}</span></span></div>
         <span className="hidden items-center gap-2 text-xs text-[#8b8d88] sm:flex"><LockKeyhole className="size-4 text-emerald-600" /> Private preparation link</span>
       </header>
       <main className="mx-auto max-w-5xl px-5 py-8 sm:px-10 sm:py-12">
+        {firm && <div className="mb-5 whitespace-pre-wrap text-xs leading-5 text-[#737872]"><p className="font-semibold">{firm.name}</p><p>{[firm.contact_email, firm.contact_phone, firm.address, firm.website].filter(Boolean).join(" · ")}</p><p>{firm.document_footer}</p></div>}
         <div className="grid gap-6 lg:grid-cols-[0.72fr_1.28fr]">
           <aside className="rounded-2xl bg-[#23313d] p-6 text-white shadow-xl shadow-[#23313d]/10 sm:p-8">
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#d5a083]">Before we meet</p>

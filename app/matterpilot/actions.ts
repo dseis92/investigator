@@ -737,20 +737,20 @@ export type DocumentDraftActionResult =
   | { ok: true; appointmentId: string; draftId: string; content: string; status?: "draft" | "final"; visibility?: "internal" | "client" }
   | { ok: false; error: string }
 
-function formatDraftDate(value: string) {
+function formatDraftDate(value: string, timezone = "UTC") {
   return new Intl.DateTimeFormat("en-US", {
     month: "long",
     day: "numeric",
     year: "numeric",
-    timeZone: "UTC",
+    timeZone: timezone,
   }).format(new Date(value))
 }
 
-function formatDraftTime(value: string) {
+function formatDraftTime(value: string, timezone = "UTC") {
   return new Intl.DateTimeFormat("en-US", {
     hour: "numeric",
     minute: "2-digit",
-    timeZone: "UTC",
+    timeZone: timezone,
   }).format(new Date(value))
 }
 
@@ -764,7 +764,7 @@ export async function createAppointmentDocumentDraftAction(input: z.input<typeof
 
   const [{ data: document, error: documentError }, { data: matter, error: matterError }] = await Promise.all([
     supabase.from("appointment_documents").select("id, appointment_id, name").eq("id", parsed.data.documentId).eq("matter_id", parsed.data.matterId).single(),
-    supabase.from("matters").select("name, matter_number").eq("id", parsed.data.matterId).single(),
+    supabase.from("matters").select("name, matter_number, firm_id").eq("id", parsed.data.matterId).single(),
   ])
   if (documentError || !document) return { ok: false, error: "This preparation document is no longer available." }
   if (matterError || !matter) return { ok: false, error: "The matter could not be loaded for this draft." }
@@ -780,14 +780,19 @@ export async function createAppointmentDocumentDraftAction(input: z.input<typeof
   const template = getDocumentTemplate(document.name)
   if (!template) return { ok: false, error: "This preparation item does not have a ready-made template yet." }
 
+  const { data: firm } = matter.firm_id ? await supabase.from("firms").select("name,contact_email,contact_phone,address,website,document_footer,timezone").eq("id", matter.firm_id).single() : { data: null }
+  if (matter.firm_id && !firm) return { ok: false, error: "The shared firm details could not be loaded. Try again before creating this draft." }
   const content = renderDocumentTemplate(template, {
     clientName: appointment.client_name || "Client name to confirm",
     matterName: matter.name,
     matterNumber: matter.matter_number,
-    appointmentDate: formatDraftDate(appointment.starts_at),
-    appointmentTime: formatDraftTime(appointment.starts_at),
+    appointmentDate: formatDraftDate(appointment.starts_at, firm?.timezone),
+    appointmentTime: formatDraftTime(appointment.starts_at, firm?.timezone),
     location: appointment.location || "Location to confirm",
-    attorneyOrFirmName: "Harbor Legal",
+    attorneyOrFirmName: firm?.name ?? "Responsible attorney or firm",
+    firmContactDetails: firm ? [firm.contact_email, firm.contact_phone, firm.address, firm.website].filter(Boolean).join(" · ") : undefined,
+    firmFooter: firm?.document_footer,
+    timezone: firm?.timezone ?? "UTC",
   })
 
   const { data: draft, error: draftError } = await supabase

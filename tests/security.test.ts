@@ -481,6 +481,67 @@ after(async () => {
 // Matter isolation
 // ============================================================
 
+describe("shared firm settings", () => {
+  test("shares defaults without granting matter access or administrative powers", async () => {
+    let firmId: string | undefined
+    const matterIds: string[] = []
+    try {
+      const created = await clientA.rpc("create_firm", { p_settings: { name: "SECTEST fictional firm", jurisdiction: "Illinois", timezone: "America/Chicago", contact_email: "hello@example.test" } })
+      assert.equal(created.error, null)
+      firmId = created.data!
+      const isolated = await clientB.from("firms").select("id").eq("id", firmId)
+      assert.deepEqual(isolated.data, [])
+      const unauthorizedCreate = await clientB.rpc("create_firm_matter", { p_firm_id: firmId, p_matter_number: `SECTEST-FORBIDDEN-${RUN_ID}`, p_name: "Forbidden", p_case_mode: "civil_defense" })
+      assert.ok(unauthorizedCreate.error)
+      const matter = await clientA.rpc("create_firm_matter", { p_firm_id: firmId, p_matter_number: `SECTEST-FIRM-${RUN_ID}`, p_name: "Fictional firm case", p_case_mode: "civil_defense" })
+      assert.equal(matter.error, null)
+      matterIds.push(matter.data!.id)
+      assert.equal(matter.data!.jurisdiction, "Illinois")
+      assert.equal(matter.data!.firm_id, firmId)
+      const other = await clientA.rpc("create_firm_matter", { p_firm_id: firmId, p_matter_number: `SECTEST-FIRM-PRIVATE-${RUN_ID}`, p_name: "Private fictional case", p_case_mode: "civil_defense" })
+      assert.equal(other.error, null)
+      matterIds.push(other.data!.id)
+      const membership = await clientA.from("matter_members").insert({ matter_id: matter.data!.id, user_id: userBId, role: "paralegal" })
+      assert.equal(membership.error, null)
+      const shared = await clientB.from("firms").select("name").eq("id", firmId).single()
+      assert.equal(shared.data?.name, "SECTEST fictional firm")
+      const privateMatter = await clientB.from("matters").select("id").eq("id", other.data!.id)
+      assert.deepEqual(privateMatter.data, [])
+      const denied = await clientB.from("firms").update({ name: "Spoofed" }).eq("id", firmId).select("id")
+      assert.ok(denied.error || denied.data?.length === 0)
+      assert.ok((await clientB.from("firm_members").insert({ firm_id: firmId, user_id: userBId, role: "admin" })).error)
+      assert.ok((await clientB.rpc("connect_firm_matters", { p_firm_id: firmId, p_matter_ids: [matterB.matterId] })).error)
+      assert.ok((await clientA.from("matters").update({ firm_id: firmId }).eq("id", matterA.matterId)).error)
+      assert.ok((await clientA.from("firms").update({ timezone: "Invalid/Zone" }).eq("id", firmId)).error)
+      assert.ok((await clientA.from("firms").update({ business_hours: [{ day: 1, start: "17:00", end: "09:00" }] }).eq("id", firmId)).error)
+      const changed = await clientA.from("firms").update({ business_hours: [{ day: 2, start: "10:00", end: "16:00" }] }).eq("id", firmId)
+      assert.equal(changed.error, null)
+      const inherited = await clientA.from("calendar_availability_rules").select("id,weekday,start_time,timezone").eq("matter_id", matter.data!.id)
+      assert.equal(inherited.data?.length, 1)
+      assert.equal(inherited.data?.[0].weekday, 2)
+      assert.equal(inherited.data?.[0].timezone, "America/Chicago")
+      const custom = await clientA.from("calendar_availability_rules").update({ start_time: "11:00" }).eq("id", inherited.data![0].id)
+      assert.equal(custom.error, null)
+      assert.equal((await clientA.from("firms").update({ timezone: "America/New_York" }).eq("id", firmId)).error, null)
+      const preserved = await clientA.from("calendar_availability_rules").select("start_time,timezone").eq("matter_id", matter.data!.id)
+      assert.equal(preserved.data?.[0].start_time, "11:00:00")
+      assert.equal(preserved.data?.[0].timezone, "America/Chicago")
+      const slug = `sectest-firm-${RUN_ID}`
+      assert.equal((await clientA.from("booking_pages").insert({ matter_id: matter.data!.id, slug, created_by: userAId })).error, null)
+      const publicIdentity = await anonClient.rpc("get_public_firm_identity", { p_booking_slug: slug })
+      assert.equal(publicIdentity.error, null)
+      assert.equal((publicIdentity.data as Record<string, unknown>)?.name, "SECTEST fictional firm")
+      assert.ok(!("id" in (publicIdentity.data as Record<string, unknown>)))
+      assert.equal((await clientA.from("booking_pages").update({ active: false }).eq("slug", slug)).error, null)
+      assert.equal((await anonClient.rpc("get_public_firm_identity", { p_booking_slug: slug })).data, null)
+      assert.ok((await anonClient.rpc("is_firm_admin", { p_firm_id: firmId })).error)
+    } finally {
+      for (const id of matterIds) assert.equal((await admin.from("matters").delete().eq("id", id)).error, null)
+      if (firmId) assert.equal((await admin.from("firms").delete().eq("id", firmId)).error, null)
+    }
+  })
+})
+
 describe("matter intake activation", () => {
   test("enforces review, current signatures, roles, and idempotent follow-ups", async () => {
     const { data: created, error } = await clientA.rpc("create_matter", { p_matter_number: `SECTEST-INTAKE-${RUN_ID}`, p_name: "Fictional intake workflow", p_case_mode: "civil_defense" })

@@ -171,6 +171,16 @@ Never commit `.env.local`, service-role keys, OpenAI keys, cron secrets, or any 
 
 ## Database and demo data
 
+### Shared firm settings (September 30, 2026)
+
+Settings → Firm & workspace now stores shared business identity, contact information, website/address, brand accent, document footer, time zone, jurisdiction, and weekday business hours. The creator is the firm administrator. Assigned staff on connected matters can read these settings but cannot edit them; firm membership does not grant access to other matters.
+
+Existing matters are connected explicitly by an administrator who also manages those matters. Administrators can select a firm when creating a new matter; creation and connection are atomic, and blank jurisdiction inherits the firm default. Firm hours supply availability only where no custom active matter hours exist; custom hours remain overrides.
+
+New appointment document drafts use the connected firm's name, contacts, footer, and time zone. Existing document versions are not rewritten. Active booking pages and unexpired preparation links expose only public business identity; preparation times use the firm time zone. Personal settings remain separate. Logo upload, team invitations, additional administrators, retention/export controls, and firm-wide reusable templates are still later slices.
+
+Verification: 97 tests pass, including two-user firm permissions/defaults and public identity revocation; typecheck, lint, and production build pass. Tests use isolated fictional records in the linked project and clean up after themselves.
+
 The database source of truth is [supabase/migrations](supabase/migrations). Apply migrations to the linked project with:
 
 ```bash
@@ -180,10 +190,10 @@ supabase db push --linked
 The latest applied migration is:
 
 ```text
-supabase/migrations/20260930121000_current_intake_document_review.sql
+supabase/migrations/20260930130000_shared_firm_settings.sql
 ```
 
-The intake workflow migrations add protected review/activation dates, attorney/admin activation checks, and current-document review enforcement. All 53 repository migrations were confirmed applied to the linked Supabase project on September 30, 2026.
+The intake workflow migrations add protected review/activation dates, attorney/admin activation checks, and current-document review enforcement. The shared-firm migration adds protected firm identity, explicit matter connections, and inherited availability. All 54 repository migrations were applied to the linked Supabase project on September 30, 2026.
 
 For a non-production environment, seed one fully worked fictional matter:
 
@@ -264,7 +274,7 @@ The current build is a strong working MVP, but these areas remain intentionally 
 - Production provider registration and live end-to-end verification for the calendar OAuth/sync slice.
 - Production transactional email delivery for queued reminders and communications.
 - Error monitoring, structured request logging, and automated deployment smoke checks.
-- Firm settings, reusable firm templates, more granular roles, retention policies, and export controls.
+- Expanded firm administration: team invitations/additional administrators, logos, reusable firm templates, more granular roles, retention policies, and export controls.
 - Payment and billing-provider integrations beyond draft time/billing foundations.
 - Evidence-cited AI summaries, automated contradiction detection, timeline-gap detection, and missing-document suggestions.
 - Deposition-question and preparation-draft assistance.

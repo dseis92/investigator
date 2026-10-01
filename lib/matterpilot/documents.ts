@@ -6,6 +6,9 @@ export type DocumentDraftContext = {
   appointmentTime: string
   location: string
   attorneyOrFirmName: string
+  firmContactDetails?: string
+  firmFooter?: string
+  timezone?: string
 }
 
 export type DocumentTemplate = {
@@ -55,6 +58,8 @@ Matter: {MATTER_NAME} ({MATTER_NUMBER})
 Appointment: {APPOINTMENT_DATE} at {APPOINTMENT_TIME}
 Location: {LOCATION}
 Prepared for: {ATTORNEY_OR_FIRM_NAME}
+Firm contact: {FIRM_CONTACT}
+Time zone: {TIMEZONE}
 
 This ready-made draft is a starting point for the matter team. Review, revise, and approve it before sharing, filing, or relying on it.`
 
@@ -497,7 +502,10 @@ export function renderDocumentTemplate(template: DocumentTemplate, context: Docu
     APPOINTMENT_TIME: context.appointmentTime || "Time to confirm",
     LOCATION: context.location || "Location to confirm",
     ATTORNEY_OR_FIRM_NAME: context.attorneyOrFirmName || "Responsible attorney or firm",
+    FIRM_CONTACT: context.firmContactDetails || "Contact details to confirm",
+    TIMEZONE: context.timezone || "UTC",
   }
 
-  return Object.entries(values).reduce((content, [key, value]) => content.replaceAll(`{${key}}`, value), template.body)
+  const body = Object.entries(values).reduce((content, [key, value]) => content.replaceAll(`{${key}}`, value), template.body)
+  return context.firmFooter ? `${body}\n\n${context.firmFooter}` : body
 }

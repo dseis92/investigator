@@ -73,7 +73,7 @@ function formatSlot(value: string) {
   }).format(new Date(value))
 }
 
-export function PublicBookingPage({ slug }: { slug: string }) {
+export function PublicBookingPage({ slug, firm }: { slug: string; firm?: import("@/lib/matterpilot/firm-settings").PublicFirmIdentity | null }) {
   const [step, setStep] = useState(0)
   const [type, setType] = useState(appointmentTypes[0].name)
   const [time, setTime] = useState("")
@@ -178,7 +178,7 @@ export function PublicBookingPage({ slug }: { slug: string }) {
 
   return (
     <div className="min-h-svh bg-[#f4f1eb] text-[#23313d]">
-      <header className="flex h-20 items-center justify-between border-b border-[#ded9d0] bg-[#fbfaf7] px-5 sm:px-10">
+      <header style={firm ? { borderBottomColor: firm.brand_color } : undefined} className="flex h-20 items-center justify-between border-b border-[#ded9d0] bg-[#fbfaf7] px-5 sm:px-10">
         <Link href="/matterpilot" className="flex items-center gap-3">
           <span className="flex size-9 items-center justify-center rounded-xl bg-[#23313d] text-white">
             <CalendarDays className="size-4" />
@@ -188,7 +188,7 @@ export function PublicBookingPage({ slug }: { slug: string }) {
               MatterPilot
             </span>
             <span className="block text-[10px] font-medium tracking-[0.2em] text-[#8b8d88] uppercase">
-              Harbor Legal
+              {firm?.name ?? "Your legal team"}
             </span>
           </span>
         </Link>
@@ -199,6 +199,7 @@ export function PublicBookingPage({ slug }: { slug: string }) {
       </header>
       <main className="mx-auto grid max-w-5xl gap-8 px-5 py-10 sm:px-10 lg:grid-cols-[0.8fr_1.2fr] lg:py-16">
         <div className="pt-3">
+          {firm && <p className="mb-4 whitespace-pre-wrap text-xs text-[#737872]">{[firm.contact_email, firm.contact_phone, firm.address, firm.website].filter(Boolean).join(" · ")}</p>}
           <p className="text-[10px] font-bold tracking-[0.2em] text-[#b65f3a] uppercase">
             Start a conversation
           </p>
