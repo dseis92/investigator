@@ -181,6 +181,8 @@ Existing matters are connected explicitly by an administrator who also manages t
 
 Settings → Team, roles & permissions now supports expiring email invitations, secure invitation links, invitation revocation, administrator/member status, attorney/investigator/paralegal/litigation-support/expert roles, administrator promotion, and member removal. Invitations are queued into the durable firm email outbox and delivered by the existing Resend worker when configured; the secure link remains available as a fallback. Invitation acceptance verifies the signed-in account email in the database. Firm membership never replaces matter-level assignment, and administrators cannot remove their own administrator access.
 
+Team administrators can also suspend/reactivate members without deleting their firm history, see last-active timestamps, and review a dedicated security trail for invitations, role changes, suspensions, and removals.
+
 New appointment document drafts use the connected firm's name, contacts, footer, and time zone. Existing document versions are not rewritten. Active booking pages and unexpired preparation links expose only public business identity; preparation times use the firm time zone. Personal settings remain separate. Logo upload, team invitations, additional administrators, retention/export controls, and firm-wide reusable templates are still later slices.
 
 Verification: 97 tests pass, including two-user firm permissions/defaults and public identity revocation; typecheck, lint, and production build pass. Tests use isolated fictional records in the linked project and clean up after themselves.

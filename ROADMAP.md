@@ -16,6 +16,8 @@ September 30 shared-firm settings slice: persisted identity, contacts, website/a
 
 September 30 team administration slice: expiring invitation records, secure token links, email matching at acceptance, administrator/member status, role changes, revocation, removal, and database-enforced self-protection. Migration `20260930150000_firm_team_invitations.sql` applied. The follow-up email-delivery slice adds a firm-scoped durable outbox and Resend worker delivery in migration `20260930160000_firm_invitation_email_delivery.sql`; copied secure links remain available when Resend is not configured.
 
+September 30 security visibility slice: active/suspended firm membership, administrator-only suspend/reactivate controls, last-active timestamps, and an append-only firm security trail for team administration. Migration `20260930170000_firm_security_activity.sql` applied. Matter-level assignment remains separate from firm membership.
+
 September 30 intake workflow release: implemented and verified with both database migrations applied. The matter command center now provides client identity editing, intake progress, direct questionnaire/engagement-letter access, document draft approval, preparation links and explicit email queueing, delivery status, reusable follow-ups, attorney conflict confirmation, and audited activation. Activation requires signatures and attorney reviews covering the current document versions. Existing appointment documents and onboarding tasks remain the source records. All 93 tests, typecheck, lint, and production build pass; pushing the release to `main` triggers Vercel deployment.
 
 MatterPilot currently provides the core legal-operations workflow:

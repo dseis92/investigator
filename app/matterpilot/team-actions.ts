@@ -34,6 +34,7 @@ ${inviteLink}
 This invitation expires in seven days. If you were not expecting it, you can ignore this message.`,
     created_by: currentUser.id,
   })
+  await supabase.rpc("log_firm_security_event", { p_firm_id: parsed.data.firmId, p_event_type: "invitation_created", p_details: { email: parsed.data.email.toLowerCase(), member_role: parsed.data.memberRole } })
   revalidatePath("/matterpilot/settings")
   return { ok: true as const, token, expiresAt: data.expires_at, invitationId: data.id, emailQueued: !emailError }
 }
@@ -55,6 +56,7 @@ export async function updateTeamMemberAction(input: { firmId: string; userId: st
   const supabase = await createClient()
   const { error } = await supabase.rpc("update_firm_member", { p_firm_id: parsed.data.firmId, p_user_id: parsed.data.userId, p_role: parsed.data.role, p_member_role: parsed.data.memberRole })
   if (error) return { ok: false as const, error: error.message }
+  await supabase.rpc("log_firm_security_event", { p_firm_id: parsed.data.firmId, p_event_type: "member_role_changed", p_target_user_id: parsed.data.userId, p_details: { role: parsed.data.role, member_role: parsed.data.memberRole } })
   revalidatePath("/matterpilot/settings")
   return { ok: true as const }
 }
@@ -65,6 +67,18 @@ export async function removeTeamMemberAction(input: { firmId: string; userId: st
   await requireCurrentUser()
   const supabase = await createClient()
   const { error } = await supabase.rpc("remove_firm_member", { p_firm_id: parsed.data.firmId, p_user_id: parsed.data.userId })
+  if (error) return { ok: false as const, error: error.message }
+  await supabase.rpc("log_firm_security_event", { p_firm_id: parsed.data.firmId, p_event_type: "member_removed", p_target_user_id: parsed.data.userId })
+  revalidatePath("/matterpilot/settings")
+  return { ok: true as const }
+}
+
+export async function setTeamMemberStatusAction(input: { firmId: string; userId: string; status: "active" | "suspended" }) {
+  const parsed = z.object({ firmId: z.string().uuid(), userId: z.string().uuid(), status: z.enum(["active", "suspended"]) }).safeParse(input)
+  if (!parsed.success) return { ok: false as const, error: "Invalid team member status." }
+  await requireCurrentUser()
+  const supabase = await createClient()
+  const { error } = await supabase.rpc("set_firm_member_status", { p_firm_id: parsed.data.firmId, p_user_id: parsed.data.userId, p_status: parsed.data.status })
   if (error) return { ok: false as const, error: error.message }
   revalidatePath("/matterpilot/settings")
   return { ok: true as const }
